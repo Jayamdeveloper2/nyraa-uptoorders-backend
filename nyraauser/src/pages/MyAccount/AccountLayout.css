@@ -1,0 +1,180 @@
+/* src/pages/account/AccountLayout.css */
+.account-layout {
+  min-height: 70vh;
+  font-family: 'Open Sans', sans-serif;
+}
+
+/* Simple Breadcrumb styling */
+.simple-breadcrumb {
+  margin-bottom: 1.5rem;
+}
+
+.breadcrumb-list {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  align-items: center;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.breadcrumb-link {
+  color: #D47A9D;
+  text-decoration: none;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-link:hover {
+  color: #D47A9D;
+}
+
+.breadcrumb-current {
+  color: #333;
+  font-weight: 600;
+}
+
+.breadcrumb-separator {
+  margin: 0 0.5rem;
+  color: #adb5bd;
+}
+
+.breadcrumb-home-icon {
+  margin-right: 0.25rem;
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #BE6992 0%, #D47A9D 100%);
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  width: auto;
+  margin-left: 0;
+}
+
+.sidebar-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(197, 164, 126, 0.4);
+}
+
+.sidebar-toggle.active {
+  background: #BE6992;
+}
+
+/* Sidebar Styles */
+.account-sidebar {
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-header {
+  padding: 1.5rem 1.5rem 0.75rem;
+  background: linear-gradient(135deg, #BE6992 0%, #D47A9D 100%);
+  color: #fff;
+  border-radius: 12px 12px 0 0;
+}
+
+.sidebar-menu {
+  padding: 1rem 0;
+}
+
+.sidebar-menu-item {
+  display: block;
+  padding: 1rem 1.5rem;
+  color: #4b5563;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border-left: 4px solid transparent;
+}
+
+.sidebar-menu-item:hover {
+  background: rgba(197, 164, 126, 0.1);
+  color: #D47A9D;
+  transform: translateX(5px);
+}
+
+.sidebar-menu-item.active {
+  background: rgba(197, 164, 126, 0.15);
+  color: #D47A9D;
+  font-weight: 600;
+  border-left: 4px solid #D47A9D;
+}
+
+/* Content area styling */
+.account-content {
+  transition: transform 0.3s ease;
+}
+
+/* Sidebar Close Button */
+.sidebar-close-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 767px) {
+  .simple-breadcrumb {
+    margin-bottom: 1rem;
+  }
+  
+  .breadcrumb-item {
+    font-size: 0.8rem;
+  }
+  
+  .breadcrumb-separator {
+    margin: 0 0.3rem;
+  }
+  
+  .account-sidebar-wrapper {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .sidebar-toggle {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  
+  .sidebar-menu-item {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Color variables */
+:root {
+  --primary-color: #D47A9D;
+  --primary-hover: #BE6992;
+  --text-primary: #333333;
+  --text-secondary: #4b5563;
+}

@@ -1,0 +1,77 @@
+.custom-banner {
+  position: relative;
+  width: 100%;
+  height: auto; /* Allow natural height based on image */
+  max-height: 100vh; /* Prevent exceeding viewport */
+  margin: 0;
+  padding: 0;
+}
+
+.banner-image {
+  width: 100%;
+  height: auto;
+  max-height: 100vh;
+}
+
+.banner-image img {
+  width: 100%;
+  height: auto;
+  max-height: 100vh;
+  object-fit: contain; /* Show entire image without cropping */
+  display: block;
+}
+
+/* Carousel arrows */
+.carousel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background-color: #fff;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.carousel-icon:hover {
+  background-color: #c5a47e;
+}
+
+.carousel-control-prev {
+  left: 15px; /* Position within banner */
+}
+
+.carousel-control-next {
+  right: 15px; /* Position within banner */
+}
+
+.carousel-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Mobile view */
+@media (max-width: 768px) {
+  .carousel-control-prev,
+  .carousel-control-next {
+    display: none !important;
+  }
+
+  .custom-banner {
+    width: 100%;
+    height: auto;
+    max-height: 60vh; /* Balanced height for mobile */
+  }
+
+  .banner-image {
+    height: auto;
+    max-height: 60vh;
+  }
+
+  .banner-image img {
+    height: auto;
+    max-height: 60vh;
+    object-fit: contain;
+  }
+}

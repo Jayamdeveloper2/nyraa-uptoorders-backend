@@ -1,0 +1,145 @@
+.cart-sidebar {
+  width: 100%;
+  max-width: 400px;
+  height: 100%;
+  background: #fff;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.cart-header {
+  border-bottom: 1px solid #eee;
+  padding: 15px 20px;
+}
+
+.cart-header-row {
+  font-weight: bold;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.cart-item {
+  padding: 10px 0;
+}
+
+.cart-item img {
+  border-radius: 4px;
+}
+
+.cart-item h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.cart-item p {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.cart-total {
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+  margin-top: 15px;
+}
+
+.special-instructions {
+  margin-top: 20px;
+}
+
+.special-instructions label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.special-instructions textarea {
+  width: 100%;
+  min-height: 100px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.special-instructions textarea:focus {
+  outline: none;
+  border-color: #c5a47e;
+}
+
+.cart-action-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+@media (max-width: 767px) {
+  .cart-sidebar {
+    max-width: none;
+  }
+
+  .cart-header {
+    padding: 10px 15px;
+  }
+
+  .cart-header-row {
+    font-size: 0.9rem;
+  }
+
+  .cart-item h6 {
+    font-size: 0.9rem;
+  }
+
+  .cart-item p {
+    font-size: 0.85rem;
+  }
+
+  .cart-total {
+    font-size: 1rem;
+  }
+
+  .special-instructions textarea {
+    min-height: 80px;
+  }
+
+  .cart-action-buttons {
+    gap: 8px;
+  }
+
+  .cart-action-buttons .view-cart-button,
+  .cart-action-buttons .buy-now-button {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 576px) {
+  .cart-item img {
+    width: 50px;
+    height: 50px;
+  }
+
+  .cart-item .btn-sm {
+    padding: 1px 5px;
+  }
+
+  .cart-item input {
+    width: 40px;
+    font-size: 0.8rem;
+  }
+
+  .cart-action-buttons {
+    gap: 6px;
+  }
+
+  .cart-action-buttons .view-cart-button,
+  .cart-action-buttons .buy-now-button {
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+}

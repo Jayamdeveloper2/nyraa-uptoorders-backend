@@ -1,0 +1,216 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans&display=swap');
+
+ 
+:root {
+  --text-primary: #222; /* Primary text/icon stroke color */
+  --text-muted: #777; /* Muted text color (descriptions) */
+  --text-mobile-muted: #666; /* Muted text for mobile descriptions */
+  --icon-hover: #BE6992; /* Icon stroke and active dot color on hover */
+  --background-white: #fff; /* White background */
+  --background-hover: #f9f3ee; /* Hover background for icon wrapper */
+  --shadow-light: rgba(0, 0, 0, 0.08); /* Light shadow for icon wrapper */
+  --shadow-mobile: rgba(0, 0, 0, 0.05); /* Shadow for mobile items */
+  --shadow-hover: rgba(197, 164, 126, 0.2); /* Hover shadow for icon wrapper */
+  --border-light: #eee; /* Light border for mobile items */
+  --dot-inactive: #ddd; /* Inactive scroll dot color */
+  --dot-hover: #ccc; /* Scroll dot hover color */
+}
+
+
+/* Support Section */
+.support-section {
+  padding: 20px 0;
+}
+
+/* Desktop Styles */
+.support-box {
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.support-box:hover {
+  transform: translateY(-2px);
+}
+.support-box h6 {
+  font-size: 0.90rem; /* Match Navbar's nav-link font-size */
+  font-weight: 700; /* Match Navbar's fw-bold */
+  color: var(--text-primary);
+  margin-bottom: 3px;
+  font-family: 'Open Sans', sans-serif;
+}
+.support-box small {
+  font-size: 0.8rem;
+  font-weight: 400; /* Lighter weight for descriptions */
+  color: var(--text-muted);
+  font-family: 'Open Sans', sans-serif;
+  text-transform: capitalize; /* First letter capitalized */
+}
+
+.support-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--background-white);
+  box-shadow: 0 3px 10px var(--shadow-light);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.support-item:hover .support-icon-wrapper {
+  background: var(--background-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px var(--shadow-hover);
+}
+
+/* Icon State Toggle for Hover Swap */
+.support-icon-outlined {
+  width: 26px;
+  height: 26px;
+  fill: none !important;
+  stroke-width: 1.5px;
+  transition: stroke 0.3s ease, transform 0.3s ease;
+}
+
+.icon-state {
+  position: absolute;
+  transition: all 0.3s ease;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-state.normal {
+  opacity: 1;
+}
+.icon-state.hover {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.support-icon-wrapper:hover .icon-state.normal {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.support-icon-wrapper:hover .icon-state.hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.icon-state.normal .support-icon-outlined {
+  stroke: var(--text-primary);
+}
+.icon-state.hover .support-icon-outlined {
+  stroke: var(--icon-hover);
+}
+
+/* Mobile Styles */
+.mobile-support-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.support-scroll-container {
+  overflow-x: auto;
+  display: flex;
+  scroll-behavior: smooth;
+  padding: 10px 10px 5px;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+}
+.support-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.support-item-mobile {
+  min-width: 100vw;
+  flex: 0 0 auto;
+  background: var(--background-white);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow-mobile);
+  padding: 20px 15px;
+  text-align: center;
+  scroll-snap-align: center;
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.support-item-mobile .support-icon-wrapper {
+  width: 50px;
+  height: 50px;
+  margin-bottom: 8px;
+}
+
+.support-item-mobile .icon-state.normal .support-icon-outlined {
+  stroke: var(--text-primary);
+}
+.support-item-mobile .icon-state.hover .support-icon-outlined {
+  stroke: var(--icon-hover);
+}
+
+.support-item-mobile h6 {
+  font-size: 0.90rem; /* Match Navbar's nav-link font-size */
+  font-weight: 700; /* Match Navbar's fw-bold */
+  margin: 6px 0 5px;
+  font-family: 'Open Sans', sans-serif;
+}
+
+.support-item-mobile p {
+  font-size: 0.78rem;
+  font-weight: 400; /* Lighter weight for descriptions */
+  color: var(--text-mobile-muted);
+  line-height: 1.4;
+  margin: 0;
+  padding: 0 5px;
+  font-family: 'Open Sans', sans-serif;
+  text-transform: capitalize; /* First letter capitalized */
+}
+
+.mobile-scroll-indicators {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+.scroll-dots {
+  display: flex;
+  gap: 6px;
+}
+.scroll-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--dot-inactive);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.scroll-dot.active {
+  background-color: var(--icon-hover);
+  transform: scale(1.2);
+}
+.scroll-dot:hover {
+  background-color: var(--dot-hover);
+}
+
+@media (max-width: 767px) {
+  .support-section {
+    padding: 15px 0;
+  }
+  .support-icon-outlined {
+    width: 22px;
+    height: 22px;
+  }
+  .support-scroll-container {
+    padding: 5px;
+  }
+  .support-item-mobile {
+    padding: 15px 10px;
+  }
+}

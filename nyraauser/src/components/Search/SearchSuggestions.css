@@ -1,0 +1,163 @@
+/* src/components/Search/SearchSuggestions.css */
+.search-suggestions {
+    margin-top: 1.5rem;
+    background-color: #fff;
+    border-radius: 8px;
+    z-index: 1050;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0;
+    box-shadow: none;
+    position: relative;
+  }
+  
+  .suggestion-section {
+    margin-bottom: 1.5rem;
+  }
+  
+  .suggestion-heading {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    color: #777;
+    margin-bottom: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  
+  .suggestion-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    margin-bottom: 0.5rem;
+  }
+  
+  .suggestion-item:hover {
+    background-color: #f8f8f8;
+    transform: translateX(5px);
+  }
+  
+  .suggestion-image {
+    width: 50px;
+    height: 50px;
+    margin-right: 1rem;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid #f0f0f0;
+  }
+  
+  .suggestion-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+  }
+  
+  .suggestion-item:hover .suggestion-image img {
+    transform: scale(1.1);
+  }
+  
+  .suggestion-content {
+    flex: 1;
+  }
+  
+  .suggestion-name {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .suggestion-price {
+    font-size: 0.9rem;
+    color: #c5a47e;
+    font-weight: 600;
+  }
+  
+  .suggestion-category {
+    padding: 0.75rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+    color: #333;
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  
+  .suggestion-category:hover {
+    background-color: #f8f8f8;
+    color: #c5a47e;
+    transform: translateX(5px);
+  }
+  
+  .suggestion-category::before {
+    content: '#';
+    margin-right: 0.5rem;
+    color: #c5a47e;
+    font-weight: 600;
+  }
+  
+  .no-suggestions {
+    padding: 2rem;
+    text-align: center;
+    color: #777;
+    font-size: 0.95rem;
+  }
+  
+  .view-all-results {
+    text-align: center;
+    padding: 1rem 0;
+    margin-top: 0.5rem;
+    border-top: 1px solid #f0f0f0;
+  }
+  
+  .view-all-results a {
+    color: #c5a47e;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: all 0.2s ease;
+  }
+  
+  .view-all-results a:hover {
+    transform: translateY(-2px);
+  }
+  
+  .view-all-results a::after {
+    content: '→';
+    margin-left: 0.5rem;
+    transition: transform 0.2s ease;
+  }
+  
+  .view-all-results a:hover::after {
+    transform: translateX(3px);
+  }
+  
+  /* Scrollbar styling */
+  .search-suggestions::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .search-suggestions::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+  
+  .search-suggestions::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 10px;
+  }
+  
+  .search-suggestions::-webkit-scrollbar-thumb:hover {
+    background: #c5a47e;
+  }
