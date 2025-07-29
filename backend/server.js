@@ -1,4 +1,4 @@
-
+// Updated server.js file with proper error handling and health check
 
 const express = require("express")
 const cors = require("cors")
@@ -26,9 +26,15 @@ const fs = require("fs")
 require("dotenv").config()
 
 // Import and setup associations
-const setupAssociations = require("./models/associations")
+const setupAssociations = require("./models/associations") 
 
 const app = express()
+
+
+app.get('/', (req, res) => {
+  res.json({ success: true, message: 'Server is running 🚀' });
+});
+
 
 // Create uploads directories if they don't exist
 const uploadDirs = ["uploads", "uploads/products", "uploads/avatars"]
@@ -99,7 +105,7 @@ app.use("/api", productRoutes)
 app.use("/api/categories", categoryRoutes)
 app.use("/api", colorRoutes)
 app.use("/api", sizeRoutes)
-// app.use("/api/orders", orderRoutes) 
+app.use("/api/orders", orderRoutes) // Fixed: Use /api/orders prefix
 
 async function testConnection() {
   try {
@@ -139,14 +145,14 @@ async function startServer() {
         department: "Administration",
         avatar: "",
         joinDate: new Date().toISOString().split("T")[0],
-        role: "Administrator", 
+        role: "Administrator",
       })
 
       console.log("✅ Default admin user created")
     }
 
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`) 
+      console.log(`🚀 Server running on port ${PORT}`)
       console.log(`🌐 Server URL: http://localhost:${PORT}`)
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`)
       console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`)

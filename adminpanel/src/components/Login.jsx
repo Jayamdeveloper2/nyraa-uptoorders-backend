@@ -148,7 +148,7 @@ const Login = () => {
               <span className="font-semibold">Username:</span> admin
             </p>
             <p className="text-sm">
-              <span className="font-semibold">Password:</span> admin123
+              <span className="font-semibold">Password:</span> admin@123
             </p>
           </div>
         </div>
