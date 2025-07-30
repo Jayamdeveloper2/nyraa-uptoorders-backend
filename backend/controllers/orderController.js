@@ -3,7 +3,9 @@ const OrderItem = require("../models/OrderItem")
 const OrderStatusHistory = require("../models/OrderStatusHistory")
 const Product = require("../models/Product")
 const User = require("../models/User")
-const { Op, sequelize } = require("sequelize")
+const Address = require("../models/Address")
+const { Op } = require("sequelize")
+const sequelize = require("../config/db")
 
 // Generate unique order number
 const generateOrderNumber = () => {
@@ -11,111 +13,71 @@ const generateOrderNumber = () => {
   const random = Math.floor(Math.random() * 1000)
     .toString()
     .padStart(3, "0")
-  return `ORD-${timestamp}-${random}`
-}
-
-// Helper function to get product price from variants
-const getProductPrice = (product, variant = null) => {
-  if (!product.variants || !Array.isArray(product.variants)) {
-    return 0
-  }
-
-  if (variant) {
-    // Find matching variant
-    const matchingVariant = product.variants.find(
-      (v) => v.color === variant.color && v.size === variant.size && v.type === variant.type,
-    )
-    return matchingVariant ? Number.parseFloat(matchingVariant.price) : Number.parseFloat(product.variants[0].price)
-  }
-
-  // Return first variant price as default
-  return Number.parseFloat(product.variants[0].price)
-}
-
-
-// Replace the existing getProductImage function with this corrected version:
-const getProductImage = (product) => {
-  if (!product) return null
-
-  // Handle different image formats from your database
-  if (product.images) {
-    try {
-      let images = product.images
-
-      // If images is a string, try to parse it as JSON
-      if (typeof images === "string") {
-        // Check if it's a JSON string
-        if (images.startsWith("[") || images.startsWith("{")) {
-          images = JSON.parse(images)
-        } else {
-          // It's a single image path - make sure it has the correct uploads path
-          return images.startsWith("http") ? images : `/uploads/products/${images}`
-        }
-      }
-
-      // If images is an array, get the first one
-      if (Array.isArray(images) && images.length > 0) {
-        const firstImage = images[0]
-        if (typeof firstImage === "string") {
-          return firstImage.startsWith("http") ? firstImage : `/uploads/products/${firstImage}`
-        }
-        if (typeof firstImage === "object" && firstImage.url) {
-          return firstImage.url.startsWith("http") ? firstImage.url : `/uploads/products/${firstImage.url}`
-        }
-      }
-
-      // If images is an object with url property
-      if (typeof images === "object" && images.url) {
-        return images.url.startsWith("http") ? images.url : `/uploads/products/${images.url}`
-      }
-    } catch (error) {
-      console.warn("Error parsing product images:", error.message)
-    }
-  }
-
-  return null
-}
-
-// Update the getOrderItemImage function as well:
-const getOrderItemImage = (orderItem) => {
-  // First try the stored productImage from order item
-  if (orderItem.productImage) {
-    if (orderItem.productImage.startsWith("http")) {
-      return orderItem.productImage
-    }
-    return `/uploads/products/${orderItem.productImage}`
-  }
-
-  // Then try to get from associated product
-  if (orderItem.product) {
-    return getProductImage(orderItem.product)
-  }
-
-  return null
+  return `NYR-${timestamp.slice(-6)}${random}`
 }
 
 // Create new order
-exports.createOrder = async (req, res) => {
+const createOrder = async (req, res) => {
+  console.log("=== CREATE ORDER DEBUG ===")
+  console.log("Request user:", req.user)
+  console.log("Request userType:", req.userType)
+  console.log("Request body keys:", Object.keys(req.body))
+  console.log("Items count:", req.body.items?.length)
+  console.log("========================")
+
+  // Comprehensive authentication check
+  if (!req.user) {
+    console.error("❌ No user found in request")
+    return res.status(401).json({
+      success: false,
+      message: "Authentication failed - no user found in request",
+    })
+  }
+
+  if (!req.user.id) {
+    console.error("❌ User object exists but has no id:", req.user)
+    return res.status(401).json({
+      success: false,
+      message: "Authentication failed - user ID missing",
+    })
+  }
+
+  console.log("✅ User authenticated:", req.user.id)
+
+  const transaction = await sequelize.transaction()
+
   try {
-    const userId = req.user.id
     const {
       items,
       shippingAddress,
       billingAddress,
       paymentMethod = "creditCard",
       specialInstructions,
+      couponCode,
       subtotal,
-      shipping = 0,
-      tax = 0,
-      discount = 0,
+      shipping = 10.0,
+      tax,
+      discount = 0.0,
       total,
     } = req.body
 
-    console.log("Creating order for user:", userId)
-    console.log("Order items:", JSON.stringify(items, null, 2))
+    // Get user ID from authenticated user
+    const userId = req.user.id
+
+    console.log("Creating order for user ID:", userId)
+
+    // Only regular users can create orders (not admins)
+    if (req.userType === "admin") {
+      await transaction.rollback()
+      return res.status(403).json({
+        success: false,
+        message: "Admins cannot create orders. Please use a regular user account.",
+      })
+    }
 
     // Validate required fields
     if (!items || !Array.isArray(items) || items.length === 0) {
+      await transaction.rollback()
       return res.status(400).json({
         success: false,
         message: "Order items are required",
@@ -123,107 +85,166 @@ exports.createOrder = async (req, res) => {
     }
 
     if (!shippingAddress) {
+      await transaction.rollback()
       return res.status(400).json({
         success: false,
         message: "Shipping address is required",
       })
     }
 
-    if (!total || total <= 0) {
+    console.log("✅ Validation passed, processing", items.length, "items")
+
+    // Validate products exist
+    const productIds = items.map((item) => item.id || item.productId)
+    console.log("Looking for products with IDs:", productIds)
+
+    const products = await Product.findAll({
+      where: { id: { [Op.in]: productIds } },
+      transaction,
+    })
+
+    console.log("Found", products.length, "products in database")
+
+    if (products.length !== productIds.length) {
+      await transaction.rollback()
       return res.status(400).json({
         success: false,
-        message: "Order total is required and must be greater than 0",
+        message: `Some products are not available. Found ${products.length} out of ${productIds.length} products.`,
       })
     }
 
     // Generate order number
-    const orderNumber = generateOrderNumber()
+    let orderNumber
+    let isUnique = false
+    let attempts = 0
+
+    while (!isUnique && attempts < 10) {
+      orderNumber = generateOrderNumber()
+      const existingOrder = await Order.findOne({
+        where: { orderNumber },
+        transaction,
+      })
+      if (!existingOrder) {
+        isUnique = true
+      }
+      attempts++
+    }
+
+    if (!isUnique) {
+      await transaction.rollback()
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate unique order number",
+      })
+    }
+
+    console.log("✅ Generated order number:", orderNumber)
+
+    // Calculate totals
+    const calculatedSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const calculatedTax = calculatedSubtotal * 0.08 // 8% tax
+    const calculatedTotal = calculatedSubtotal + shipping + calculatedTax - discount
+
+    console.log("💰 Order totals:", {
+      subtotal: calculatedSubtotal,
+      tax: calculatedTax,
+      shipping,
+      discount,
+      total: calculatedTotal,
+    })
 
     // Create order
-    const order = await Order.create({
+    const orderData = {
       orderNumber,
       userId,
       status: "pending",
-      paymentMethod,
       paymentStatus: "pending",
-      subtotal: Number.parseFloat(subtotal) || 0,
-      shipping: Number.parseFloat(shipping) || 0,
-      tax: Number.parseFloat(tax) || 0,
-      discount: Number.parseFloat(discount) || 0,
-      total: Number.parseFloat(total),
+      paymentMethod,
+      subtotal: calculatedSubtotal,
+      shipping,
+      tax: calculatedTax,
+      discount,
+      total: calculatedTotal,
       shippingAddress,
       billingAddress: billingAddress || shippingAddress,
       specialInstructions,
-      orderDate: new Date(),
-    })
+      couponCode,
+    }
 
-    console.log("Order created with ID:", order.id)
+    console.log("Creating order with data:", orderData)
+
+    const order = await Order.create(orderData, { transaction })
+
+    console.log("✅ Order created with ID:", order.id)
 
     // Create order items
     const orderItems = []
     for (const item of items) {
-      let product = null
-      let productName = item.productName || item.name || "Unknown Product"
-      let productImage = item.productImage || item.image || null
-      let unitPrice = Number.parseFloat(item.unitPrice || item.price || 0)
+      const product = products.find((p) => p.id === (item.id || item.productId))
 
-      // Try to get product details if productId is provided
-      if (item.productId) {
-        try {
-          product = await Product.findByPk(item.productId)
-          if (product) {
-            productName = product.name
-            productImage = getProductImage(product)
-
-            // Get price from variant if available
-            if (item.variant) {
-              unitPrice = getProductPrice(product, item.variant)
-            } else {
-              unitPrice = getProductPrice(product)
-            }
-          } else {
-            console.warn(`Product ${item.productId} not found, using provided data`)
-          }
-        } catch (error) {
-          console.warn(`Error fetching product ${item.productId}:`, error.message)
-        }
+      if (!product) {
+        console.error("❌ Product not found for item:", item)
+        continue
       }
 
-      const quantity = Number.parseInt(item.quantity) || 1
-      const totalPrice = Number.parseFloat(item.totalPrice) || quantity * unitPrice
-
-
-      // In the createOrder function, update the orderItem creation part:
-      const orderItem = await OrderItem.create({
+      const orderItemData = {
         orderId: order.id,
-        productId: item.productId || null,
-        productName,
-        productImage: productImage, 
-        variant: item.variant || {
+        productId: product.id,
+        productName: item.name || product.name,
+        productImage: item.image || (Array.isArray(product.images) ? product.images[0] : null),
+        variant: {
           color: item.color || null,
           size: item.size || null,
-          type: item.type || null,
           carat: item.carat || null,
         },
-        quantity,
-        unitPrice,
-        totalPrice,
-      })
+        quantity: item.quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * item.quantity,
+      }
 
+      console.log("Creating order item:", orderItemData)
+
+      const orderItem = await OrderItem.create(orderItemData, { transaction })
       orderItems.push(orderItem)
-      console.log(`Created order item: ${productName} x${quantity}`)
     }
 
-    // Create initial status history
-    await OrderStatusHistory.create({
-      orderId: order.id,
-      status: "pending",
-      notes: "Order created",
-      changedBy: userId,
-      changedAt: new Date(),
-    })
+    console.log("✅ Created", orderItems.length, "order items")
 
-    // Fetch the complete order with items and product details
+    // Create initial status history
+    await OrderStatusHistory.create(
+      {
+        orderId: order.id,
+        status: "pending",
+        comment: "Order created",
+        changedBy: "system",
+      },
+      { transaction },
+    )
+
+    console.log("✅ Created status history")
+
+    // Update user's order statistics if the fields exist
+    try {
+      await User.increment(
+        {
+          totalOrders: 1,
+          totalSpent: calculatedTotal,
+        },
+        {
+          where: { id: userId },
+          transaction,
+        },
+      )
+      console.log("✅ Updated user statistics")
+    } catch (incrementError) {
+      console.log("⚠️ Could not update user statistics:", incrementError.message)
+      // Continue without failing the order creation
+    }
+
+    await transaction.commit()
+    console.log("✅ Transaction committed successfully")
+
+    // Fetch complete order with items
     const completeOrder = await Order.findByPk(order.id, {
       include: [
         {
@@ -233,28 +254,29 @@ exports.createOrder = async (req, res) => {
             {
               model: Product,
               as: "product",
-              attributes: ["id", "name", "images", "variants", "description"],
-              required: false,
+              attributes: ["id", "name", "images", "slug"],
             },
           ],
         },
         {
-          model: OrderStatusHistory,
-          as: "statusHistory",
-          order: [["changedAt", "DESC"]],
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email"],
         },
       ],
     })
 
-    console.log("Order creation successful")
+    console.log("✅ Order creation completed successfully")
 
     res.status(201).json({
       success: true,
       message: "Order created successfully",
-      order: completeOrder,
+      data: completeOrder,
     })
   } catch (error) {
-    console.error("Error creating order:", error)
+    await transaction.rollback()
+    console.error("❌ Error creating order:", error)
+    console.error("Error stack:", error.stack)
     res.status(500).json({
       success: false,
       message: "Failed to create order",
@@ -263,26 +285,30 @@ exports.createOrder = async (req, res) => {
   }
 }
 
-// Get user orders with pagination
-exports.getUserOrders = async (req, res) => {
+// Get user orders
+const getUserOrders = async (req, res) => {
   try {
-    const userId = req.user.id
-    const page = Number.parseInt(req.query.page) || 1
-    const limit = Number.parseInt(req.query.limit) || 10
-    const status = req.query.status
-    const offset = (page - 1) * limit
+    const { page = 1, limit = 10, status } = req.query
+    let userId
 
-    console.log(`Fetching orders for user ${userId}, page ${page}, limit ${limit}`)
-
-    // Build where clause
-    const whereClause = { userId }
-    if (status) {
-      whereClause.status = status
+    // If admin, they can specify userId in query, otherwise use their own ID
+    if (req.userType === "admin") {
+      userId = req.query.userId || req.user.id
+    } else {
+      userId = req.user.id
     }
 
-    // Get orders with pagination
+    console.log("Fetching orders for user ID:", userId)
+
+    const offset = (Number.parseInt(page) - 1) * Number.parseInt(limit)
+    const where = { userId }
+
+    if (status) {
+      where.status = status
+    }
+
     const { count, rows: orders } = await Order.findAndCountAll({
-      where: whereClause,
+      where,
       include: [
         {
           model: OrderItem,
@@ -291,39 +317,26 @@ exports.getUserOrders = async (req, res) => {
             {
               model: Product,
               as: "product",
-              attributes: ["id", "name", "images", "variants", "description"],
-              required: false, // LEFT JOIN to handle deleted products
+              attributes: ["id", "name", "images", "slug"],
             },
           ],
         },
-        {
-          model: OrderStatusHistory,
-          as: "statusHistory",
-          order: [["changedAt", "DESC"]],
-          limit: 1, // Only get the latest status
-        },
       ],
-      order: [["orderDate", "DESC"]],
-      limit,
+      order: [["createdAt", "DESC"]],
+      limit: Number.parseInt(limit),
       offset,
     })
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(count / limit)
-    const hasNext = page < totalPages
-    const hasPrev = page > 1
-
-    console.log(`Found ${orders.length} orders out of ${count} total`)
-
     res.json({
       success: true,
-      orders,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalOrders: count,
-        hasNext,
-        hasPrev,
+      data: {
+        orders,
+        pagination: {
+          currentPage: Number.parseInt(page),
+          totalPages: Math.ceil(count / Number.parseInt(limit)),
+          totalItems: count,
+          itemsPerPage: Number.parseInt(limit),
+        },
       },
     })
   } catch (error) {
@@ -337,18 +350,18 @@ exports.getUserOrders = async (req, res) => {
 }
 
 // Get single order
-exports.getOrder = async (req, res) => {
+const getOrderById = async (req, res) => {
   try {
-    const { orderId } = req.params
-    const userId = req.user.id
+    const { id } = req.params
+    const where = { id }
 
-    console.log(`Fetching order ${orderId} for user ${userId}`)
+    // If not admin, restrict to user's own orders
+    if (req.userType !== "admin") {
+      where.userId = req.user.id
+    }
 
     const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId,
-      },
+      where,
       include: [
         {
           model: OrderItem,
@@ -357,15 +370,19 @@ exports.getOrder = async (req, res) => {
             {
               model: Product,
               as: "product",
-              attributes: ["id", "name", "images", "variants", "description"],
-              required: false,
+              attributes: ["id", "name", "images", "slug"],
             },
           ],
         },
         {
           model: OrderStatusHistory,
           as: "statusHistory",
-          order: [["changedAt", "DESC"]],
+          order: [["createdAt", "ASC"]],
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone"],
         },
       ],
     })
@@ -377,11 +394,9 @@ exports.getOrder = async (req, res) => {
       })
     }
 
-    console.log("Order found successfully")
-
     res.json({
       success: true,
-      order,
+      data: order,
     })
   } catch (error) {
     console.error("Error fetching order:", error)
@@ -394,16 +409,16 @@ exports.getOrder = async (req, res) => {
 }
 
 // Update order status
-exports.updateOrderStatus = async (req, res) => {
+const updateOrderStatus = async (req, res) => {
+  const transaction = await sequelize.transaction()
+
   try {
-    const { orderId } = req.params
-    const { status, notes } = req.body
-    const userId = req.user.id
+    const { id } = req.params
+    const { status, comment, trackingNumber } = req.body
+    const changedBy = req.user?.name || req.body.changedBy || "admin"
 
-    console.log(`Updating order ${orderId} status to ${status}`)
+    const validStatuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"]
 
-    // Validate status
-    const validStatuses = ["pending", "processing", "shipped", "delivered", "cancelled", "returned"]
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -411,79 +426,69 @@ exports.updateOrderStatus = async (req, res) => {
       })
     }
 
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId,
-      },
-    })
+    const order = await Order.findByPk(id, { transaction })
 
     if (!order) {
+      await transaction.rollback()
       return res.status(404).json({
         success: false,
         message: "Order not found",
       })
     }
 
-    // Check if status change is allowed
-    if (order.status === "delivered" && status !== "returned") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot change status of delivered order",
-      })
+    // Update order
+    const updateData = { status }
+
+    if (trackingNumber) {
+      updateData.trackingNumber = trackingNumber
     }
 
-    if (order.status === "cancelled") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot change status of cancelled order",
-      })
+    if (status === "delivered") {
+      updateData.deliveredAt = new Date()
+    } else if (status === "cancelled") {
+      updateData.cancelledAt = new Date()
+    } else if (status === "refunded") {
+      updateData.refundedAt = new Date()
+      updateData.paymentStatus = "refunded"
     }
 
-    // Update order status
-    await order.update({ status })
+    await order.update(updateData, { transaction })
 
     // Create status history entry
-    await OrderStatusHistory.create({
-      orderId: order.id,
-      status,
-      notes: notes || `Status changed to ${status}`,
-      changedBy: userId,
-      changedAt: new Date(),
-    })
+    await OrderStatusHistory.create(
+      {
+        orderId: order.id,
+        status,
+        comment: comment || `Order status changed to ${status}`,
+        changedBy,
+      },
+      { transaction },
+    )
+
+    await transaction.commit()
 
     // Fetch updated order
-    const updatedOrder = await Order.findByPk(order.id, {
+    const updatedOrder = await Order.findByPk(id, {
       include: [
         {
           model: OrderItem,
           as: "items",
-          include: [
-            {
-              model: Product,
-              as: "product",
-              attributes: ["id", "name", "images", "variants", "description"],
-              required: false,
-            },
-          ],
         },
         {
           model: OrderStatusHistory,
           as: "statusHistory",
-          order: [["changedAt", "DESC"]],
+          order: [["createdAt", "ASC"]],
         },
       ],
     })
 
-    console.log("Order status updated successfully")
-
     res.json({
       success: true,
       message: "Order status updated successfully",
-      order: updatedOrder,
+      data: updatedOrder,
     })
   } catch (error) {
+    await transaction.rollback()
     console.error("Error updating order status:", error)
     res.status(500).json({
       success: false,
@@ -494,34 +499,54 @@ exports.updateOrderStatus = async (req, res) => {
 }
 
 // Get order statistics
-exports.getOrderStats = async (req, res) => {
+const getOrderStats = async (req, res) => {
   try {
-    const userId = req.user.id
+    const totalOrders = await Order.count()
+    const pendingOrders = await Order.count({ where: { status: "pending" } })
+    const processingOrders = await Order.count({ where: { status: "processing" } })
+    const shippedOrders = await Order.count({ where: { status: "shipped" } })
+    const deliveredOrders = await Order.count({ where: { status: "delivered" } })
+    const cancelledOrders = await Order.count({ where: { status: "cancelled" } })
 
-    console.log(`Fetching order stats for user ${userId}`)
+    const totalRevenue = await Order.sum("total", {
+      where: { status: { [Op.in]: ["delivered", "shipped", "processing"] } },
+    })
 
-    const stats = await Order.findAll({
-      where: { userId },
+    const recentOrders = await Order.findAll({
+      limit: 10,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email"],
+        },
+      ],
+    })
+
+    const ordersByStatus = await Order.findAll({
       attributes: [
         "status",
         [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-        [sequelize.fn("SUM", sequelize.col("total")), "totalAmount"],
+        [sequelize.fn("SUM", sequelize.col("total")), "revenue"],
       ],
       group: ["status"],
-      raw: true,
     })
-
-    const totalOrders = await Order.count({ where: { userId } })
-    const totalSpent = await Order.sum("total", { where: { userId } })
-
-    console.log("Order stats fetched successfully")
 
     res.json({
       success: true,
-      stats: {
-        totalOrders,
-        totalSpent: totalSpent || 0,
-        statusBreakdown: stats,
+      data: {
+        overview: {
+          totalOrders,
+          pendingOrders,
+          processingOrders,
+          shippedOrders,
+          deliveredOrders,
+          cancelledOrders,
+          totalRevenue: totalRevenue || 0,
+        },
+        recentOrders,
+        ordersByStatus,
       },
     })
   } catch (error) {
@@ -534,4 +559,79 @@ exports.getOrderStats = async (req, res) => {
   }
 }
 
-module.exports = exports
+// Cancel order
+const cancelOrder = async (req, res) => {
+  const transaction = await sequelize.transaction()
+
+  try {
+    const { id } = req.params
+    const { reason } = req.body
+    const where = { id }
+
+    // If not admin, restrict to user's own orders
+    if (req.userType !== "admin") {
+      where.userId = req.user.id
+    }
+
+    const order = await Order.findOne({ where, transaction })
+
+    if (!order) {
+      await transaction.rollback()
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      })
+    }
+
+    if (!["pending", "confirmed"].includes(order.status)) {
+      await transaction.rollback()
+      return res.status(400).json({
+        success: false,
+        message: "Order cannot be cancelled at this stage",
+      })
+    }
+
+    await order.update(
+      {
+        status: "cancelled",
+        cancelledAt: new Date(),
+      },
+      { transaction },
+    )
+
+    await OrderStatusHistory.create(
+      {
+        orderId: order.id,
+        status: "cancelled",
+        comment: reason || "Order cancelled by customer",
+        changedBy: req.user.name || req.user.email || "user",
+      },
+      { transaction },
+    )
+
+    await transaction.commit()
+
+    res.json({
+      success: true,
+      message: "Order cancelled successfully",
+      data: order,
+    })
+  } catch (error) {
+    await transaction.rollback()
+    console.error("Error cancelling order:", error)
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel order",
+      error: error.message,
+    })
+  }
+}
+
+module.exports = {
+  createOrder,
+  getUserOrders,
+  getOrderById,
+  updateOrderStatus,
+  getOrderStats,
+  cancelOrder,
+}

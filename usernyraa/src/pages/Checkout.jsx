@@ -1,19 +1,26 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Form, FormCheck, Modal } from "react-bootstrap";
-import { useSelector } from "react-redux";
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { AddAddressButton, ConfirmOrderButton } from "../components/ui/Buttons";
-import { getAddresses, saveAddress, getUserData, addOrder } from '../data/profileData';
+"use client"
+
+import { useState, useEffect } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
+import { Form, FormCheck, Modal } from "react-bootstrap"
+import { useSelector, useDispatch } from "react-redux"
+import { toast, ToastContainer } from "react-toastify"
+import "react-toastify/dist/ReactToastify.css"
+import { AddAddressButton, ConfirmOrderButton } from "../components/ui/Buttons"
+import { getAddresses, saveAddress, getUserData } from "../data/profileData"
+import { createOrder } from "../store/orderSlice"
+import { clearCart } from "../store/cartSlice"
 
 const Checkout = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const cartItems = useSelector((state) => state.cart.items);
-  const [addresses, setAddresses] = useState(getAddresses());
-  const [selectedAddressId, setSelectedAddressId] = useState(null);
-  const [showAddressModal, setShowAddressModal] = useState(false);
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  const location = useLocation()
+  const cartItems = useSelector((state) => state.cart.items)
+  const { loading: orderLoading, error: orderError } = useSelector((state) => state.orders)
+
+  const [addresses, setAddresses] = useState(getAddresses())
+  const [selectedAddressId, setSelectedAddressId] = useState(null)
+  const [showAddressModal, setShowAddressModal] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     street: "",
@@ -25,31 +32,29 @@ const Checkout = () => {
     isDefault: false,
     type: "home",
     paymentMethod: "creditCard",
-  });
-  const [couponCode, setCouponCode] = useState("");
-  const [couponDiscount, setCouponDiscount] = useState(0);
-  const [specialInstructions, setSpecialInstructions] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(!!getUserData().email);
+  })
+  const [couponCode, setCouponCode] = useState("")
+  const [couponDiscount, setCouponDiscount] = useState(0)
+  const [specialInstructions, setSpecialInstructions] = useState("")
+  const [isLoggedIn, setIsLoggedIn] = useState(!!getUserData().email)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
+    window.scrollTo(0, 0)
+  }, [location.pathname])
 
   useEffect(() => {
-    setAddresses(getAddresses());
-    const defaultAddress = getAddresses().find((addr) => addr.isDefault);
+    setAddresses(getAddresses())
+    const defaultAddress = getAddresses().find((addr) => addr.isDefault)
     if (defaultAddress) {
-      setSelectedAddressId(defaultAddress.id);
+      setSelectedAddressId(defaultAddress.id)
     }
 
     if (!isLoggedIn) {
       toast.error(
         <div className="toast-content">
           <p className="mb-3">Please log in to proceed with checkout.</p>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate("/login")}
-          >
+          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
             Go to Login
           </button>
         </div>,
@@ -58,33 +63,40 @@ const Checkout = () => {
           autoClose: 5000,
           closeOnClick: false,
           draggable: false,
-        }
-      );
-      navigate("/login");
+        },
+      )
+      navigate("/login")
     }
-  }, [navigate, isLoggedIn]);
+  }, [navigate, isLoggedIn])
+
+  // Show error toast when order creation fails
+  useEffect(() => {
+    if (orderError) {
+      toast.error(orderError, {
+        position: "top-right",
+        autoClose: 5000,
+      })
+    }
+  }, [orderError])
 
   const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type, checked } = e.target
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
-    }));
-  };
+    }))
+  }
 
   const handleAddressSelect = (id) => {
-    setSelectedAddressId(id);
-  };
+    setSelectedAddressId(id)
+  }
 
   const handleAddAddressClick = () => {
     if (!isLoggedIn) {
       toast.error(
         <div className="toast-content">
           <p className="mb-3">Please log in to add a shipping address.</p>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate("/login")}
-          >
+          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
             Go to Login
           </button>
         </div>,
@@ -93,28 +105,28 @@ const Checkout = () => {
           autoClose: 5000,
           closeOnClick: false,
           draggable: false,
-        }
-      );
-      navigate("/login");
-      return;
+        },
+      )
+      navigate("/login")
+      return
     }
-    setShowAddressModal(true);
-  };
+    setShowAddressModal(true)
+  }
 
   const handleAddNewAddress = (e) => {
-    e.preventDefault();
-    const { name, street, city, state, zip, phone } = formData;
+    e.preventDefault()
+    const { name, street, city, state, zip, phone } = formData
     if (!name || !street || !city || !state || !zip || !phone) {
       toast.error("Please fill all required fields.", {
         position: "top-right",
         autoClose: 3000,
-      });
-      return;
+      })
+      return
     }
-    const updatedAddresses = saveAddress(formData);
-    setAddresses(updatedAddresses);
-    setSelectedAddressId(formData.id || Date.now());
-    setShowAddressModal(false);
+    const updatedAddresses = saveAddress(formData)
+    setAddresses(updatedAddresses)
+    setSelectedAddressId(formData.id || Date.now())
+    setShowAddressModal(false)
     setFormData({
       name: "",
       street: "",
@@ -126,50 +138,50 @@ const Checkout = () => {
       isDefault: false,
       type: "home",
       paymentMethod: "creditCard",
-    });
+    })
     toast.success("Address added successfully", {
       position: "top-right",
       autoClose: 3000,
-    });
-  };
+    })
+  }
 
   const applyCoupon = () => {
     if (couponCode.toUpperCase() === "SAVE10") {
-      setCouponDiscount(0.1);
+      setCouponDiscount(0.1)
       toast.success("Coupon applied! 10% off your order.", {
         position: "top-right",
         autoClose: 3000,
-      });
+      })
     } else {
-      setCouponDiscount(0);
+      setCouponDiscount(0)
       toast.error("Invalid coupon code.", {
         position: "top-right",
         autoClose: 3000,
-      });
+      })
     }
-  };
+  }
 
   const getSubtotal = () => {
-    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
-  };
+    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
+  }
 
   const getTotal = () => {
-    const subtotal = getSubtotal();
-    const shipping = 10.0;
-    const tax = subtotal * 0.08;
-    const discount = subtotal * couponDiscount;
-    return (subtotal + shipping + tax - discount).toFixed(2);
-  };
+    const subtotal = getSubtotal()
+    const shipping = 10.0
+    const tax = subtotal * 0.08
+    const discount = subtotal * couponDiscount
+    return (subtotal + shipping + tax - discount).toFixed(2)
+  }
 
-  const handleConfirmOrder = () => {
-    if (!isLoggedIn) {
+  const handleConfirmOrder = async () => {
+    // Check if user is authenticated
+    const token = localStorage.getItem("token") || localStorage.getItem("authToken")
+
+    if (!token) {
       toast.error(
         <div className="toast-content">
           <p className="mb-3">Please log in to proceed with checkout.</p>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate("/login")}
-          >
+          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
             Go to Login
           </button>
         </div>,
@@ -178,61 +190,110 @@ const Checkout = () => {
           autoClose: 5000,
           closeOnClick: false,
           draggable: false,
-        }
-      );
-      return;
+        },
+      )
+      navigate("/login")
+      return
     }
 
     if (!selectedAddressId) {
       toast.error("Please select or add a shipping address.", {
         position: "top-right",
         autoClose: 3000,
-      });
-      return;
+      })
+      return
     }
 
-    const selectedAddress = addresses.find((addr) => addr.id === selectedAddressId);
+    const selectedAddress = addresses.find((addr) => addr.id === selectedAddressId)
     if (!selectedAddress) {
       toast.error("Please select a valid address.", {
         position: "top-right",
         autoClose: 3000,
-      });
-      return;
+      })
+      return
     }
 
-    const orderDetails = {
-      id: `NYR-${Date.now()}`,
-      items: cartItems.map((item) => ({
-        id: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        image: item.image || "https://via.placeholder.com/100",
-        color: item.color || null,
-        carat: item.carat || null,
-      })),
-      subtotal: getSubtotal().toFixed(2),
-      shipping: 10.0,
-      tax: (getSubtotal() * 0.08).toFixed(2),
-      discount: (getSubtotal() * couponDiscount).toFixed(2),
-      total: getTotal(),
-      shippingAddress: selectedAddress,
-      specialInstructions,
-      orderDate: new Date().toISOString(),
-      status: "Pending",
-      deliveryDate: null,
-      paymentMethod: formData.paymentMethod || "creditCard",
-    };
+    if (cartItems.length === 0) {
+      toast.error("Your cart is empty.", {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
 
-    addOrder(orderDetails);
-    localStorage.setItem("lastOrder", JSON.stringify(orderDetails));
-    localStorage.removeItem("cart");
-    toast.success("Order placed successfully!", {
-      position: "top-right",
-      autoClose: 3000,
-    });
-    navigate("/checkout/confirmation");
-  };
+    setIsSubmitting(true)
+
+    try {
+      const subtotal = getSubtotal()
+      const shipping = 10.0
+      const tax = subtotal * 0.08
+      const discount = subtotal * couponDiscount
+      const total = subtotal + shipping + tax - discount
+
+      const orderData = {
+        items: cartItems.map((item) => ({
+          id: item.id,
+          productId: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          image: item.image || "https://via.placeholder.com/100",
+          color: item.color || null,
+          size: item.size || null,
+          carat: item.carat || null,
+        })),
+        subtotal,
+        shipping,
+        tax,
+        discount,
+        total,
+        shippingAddress: selectedAddress,
+        billingAddress: selectedAddress,
+        specialInstructions,
+        paymentMethod: formData.paymentMethod || "creditCard",
+        couponCode: couponDiscount > 0 ? couponCode : null,
+      }
+
+      console.log("Order data being sent:", orderData)
+
+      const resultAction = await dispatch(createOrder(orderData))
+
+      if (createOrder.fulfilled.match(resultAction)) {
+        // Order created successfully
+        dispatch(clearCart())
+        localStorage.removeItem("lastOrder") // Clean up old localStorage data
+
+        toast.success("Order placed successfully!", {
+          position: "top-right",
+          autoClose: 3000,
+        })
+
+        navigate("/checkout/confirmation", {
+          state: { orderId: resultAction.payload.id },
+        })
+      } else {
+        // Order creation failed
+        if (resultAction.payload?.includes("Authentication") || resultAction.payload?.includes("token")) {
+          // Authentication error - redirect to login
+          toast.error("Your session has expired. Please log in again.", {
+            position: "top-right",
+            autoClose: 5000,
+          })
+          navigate("/login")
+        } else {
+          throw new Error(resultAction.payload || "Failed to create order")
+        }
+      }
+    } catch (error) {
+      console.error("Order creation error:", error)
+      toast.error(error.message || "Failed to place order. Please try again.", {
+        position: "top-right",
+        autoClose: 5000,
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="checkout-container">
@@ -243,10 +304,7 @@ const Checkout = () => {
           {addresses.length === 0 ? (
             <div className="mb-4">
               <p className="text-muted">No addresses found. Please add a shipping address to proceed.</p>
-              <AddAddressButton
-                onClick={handleAddAddressClick}
-                className="mt-2"
-              />
+              <AddAddressButton onClick={handleAddAddressClick} className="mt-2" />
             </div>
           ) : (
             <div className="mb-4">
@@ -272,10 +330,7 @@ const Checkout = () => {
                   />
                 </div>
               ))}
-              <AddAddressButton
-                onClick={handleAddAddressClick}
-                className="mt-2"
-              />
+              <AddAddressButton onClick={handleAddAddressClick} className="mt-2" />
             </div>
           )}
 
@@ -361,6 +416,7 @@ const Checkout = () => {
                     <option value="Germany">Germany</option>
                     <option value="France">France</option>
                     <option value="Japan">Japan</option>
+                    <option value="India">India</option>
                   </Form.Select>
                 </Form.Group>
                 <Form.Group className="mb-3">
@@ -409,11 +465,7 @@ const Checkout = () => {
 
           <h5 className="mb-3 mt-4">Payment Method</h5>
           <Form.Group className="mb-3">
-            <Form.Select
-              name="paymentMethod"
-              value={formData.paymentMethod}
-              onChange={handleInputChange}
-            >
+            <Form.Select name="paymentMethod" value={formData.paymentMethod} onChange={handleInputChange}>
               <option value="creditCard">Credit Card</option>
               <option value="debitCard">Debit Card</option>
               <option value="paypal">PayPal</option>
@@ -439,7 +491,9 @@ const Checkout = () => {
                       />
                     </div>
                     <div className="item-details flex-grow-1">
-                      <p className="mb-1"><strong>{item.name}</strong></p>
+                      <p className="mb-1">
+                        <strong>{item.name}</strong>
+                      </p>
                       <p className="mb-1 text-muted">
                         {item.color && `Color: ${item.color} | `}
                         {item.carat && `Carat: ${item.carat}`}
@@ -492,8 +546,10 @@ const Checkout = () => {
           <ConfirmOrderButton
             className="w-50 mt-3"
             onClick={handleConfirmOrder}
-            disabled={cartItems.length === 0}
-          />
+            disabled={cartItems.length === 0 || isSubmitting || orderLoading}
+          >
+            {isSubmitting || orderLoading ? "Processing..." : "Confirm Order"}
+          </ConfirmOrderButton>
         </div>
       </div>
 
@@ -729,7 +785,7 @@ const Checkout = () => {
         }
       `}</style>
     </div>
-  );
-};
+  )
+}
 
-export default Checkout;
+export default Checkout

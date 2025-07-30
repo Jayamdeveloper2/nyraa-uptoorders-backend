@@ -1,123 +1,219 @@
-// src/components/CheckoutConfirmation.jsx
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { PromoNavButton, BuyNowButton } from "../components/ui/Buttons";
-import IconLink from "../components/ui/Icons";
-import PopupNotificationWrapper from "../components/PopupNotificationWrapper/PopupNotificationWrapper";
-import { getOrders } from '../data/profileData';
+"use client"
+
+import { useEffect, useState } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
+import { useSelector, useDispatch } from "react-redux"
+import { PromoNavButton, BuyNowButton } from "../components/ui/Buttons"
+import IconLink from "../components/ui/Icons"
+import PopupNotificationWrapper from "../components/PopupNotificationWrapper/PopupNotificationWrapper"
+import { fetchOrderById } from "../store/orderSlice"
 
 const CheckoutConfirmation = () => {
-  const navigate = useNavigate();
-  const [orderDetails, setOrderDetails] = useState(null);
-  const [showPopup, setShowPopup] = useState(false);
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  const location = useLocation()
+  const { currentOrder, loading } = useSelector((state) => state.orders)
+  const [showPopup, setShowPopup] = useState(false)
 
   useEffect(() => {
-    const lastOrder = JSON.parse(localStorage.getItem("lastOrder"));
-    if (lastOrder) {
-      setOrderDetails(lastOrder);
-      setShowPopup(true);
+    // Get order ID from location state or URL params
+    const orderId = location.state?.orderId || new URLSearchParams(location.search).get("orderId")
+
+    if (orderId) {
+      dispatch(fetchOrderById({ orderId }))
     } else {
-      const orders = getOrders();
-      const recentOrder = orders[orders.length - 1];
-      if (recentOrder) {
-        setOrderDetails(recentOrder);
-        setShowPopup(true);
+      // Fallback to localStorage for backward compatibility
+      const lastOrder = JSON.parse(localStorage.getItem("lastOrder"))
+      if (lastOrder) {
+        // Convert localStorage order format to match API format
+        const convertedOrder = {
+          id: lastOrder.id,
+          orderNumber: lastOrder.id,
+          items: lastOrder.items.map((item) => ({
+            id: item.id,
+            productName: item.name,
+            quantity: item.quantity,
+            unitPrice: item.price,
+            totalPrice: item.price * item.quantity,
+            variant: {
+              color: item.color,
+              carat: item.carat,
+            },
+          })),
+          subtotal: Number.parseFloat(lastOrder.subtotal),
+          shipping: lastOrder.shipping,
+          tax: Number.parseFloat(lastOrder.tax),
+          discount: Number.parseFloat(lastOrder.discount),
+          total: Number.parseFloat(lastOrder.total),
+          shippingAddress: lastOrder.shippingAddress,
+          paymentMethod: lastOrder.paymentMethod,
+          specialInstructions: lastOrder.specialInstructions,
+          status: lastOrder.status || "pending",
+          createdAt: lastOrder.orderDate,
+        }
+        // Set the order directly in Redux state
+        dispatch({ type: "orders/setCurrentOrder", payload: convertedOrder })
       }
     }
-  }, []);
+  }, [dispatch, location])
 
-  if (!orderDetails) {
-    return <div className="container my-5 text-center">No order found.</div>;
-  }
+  useEffect(() => {
+    if (currentOrder) {
+      setShowPopup(true)
+    }
+  }, [currentOrder])
 
   const handlePopupClose = () => {
-    setShowPopup(false);
-  };
+    setShowPopup(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="container my-5 text-center">
+        <div className="spinner-border" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+        <p className="mt-3">Loading order details...</p>
+      </div>
+    )
+  }
+
+  if (!currentOrder) {
+    return (
+      <div className="container my-5 text-center">
+        <h2>No order found</h2>
+        <p>We couldn't find your order details.</p>
+        <BuyNowButton label="Go to Orders" onClick={() => navigate("/account/orders")} />
+      </div>
+    )
+  }
 
   return (
     <div className="container my-5">
       <div className="text-center mb-4">
         <IconLink iconType="guarantee" isSupport={true} className="guarantee-icon mb-3" />
         <h1 className="mb-2">Order Confirmation</h1>
-        <p className="mb-4">Thank you for your order! Your order has been successfully placed.</p>
+        <p className="mb-2">Thank you for your order! Your order has been successfully placed.</p>
+        <p className="text-muted">
+          Order Number: <strong>{currentOrder.orderNumber}</strong>
+        </p>
+        <p className="text-muted">
+          Status:{" "}
+          <span className={`badge ${getStatusBadgeClass(currentOrder.status)}`}>
+            {currentOrder.status?.toUpperCase()}
+          </span>
+        </p>
       </div>
+
       <div className="order-details mb-4">
         <h5>Order Summary</h5>
         <div className="order-items mt-3">
-          {orderDetails.items.map((item) => (
-            <div key={item.id} className="d-flex justify-content-between mb-2">
-              <div>
-                <p className="mb-0">{item.name} (x{item.quantity})</p>
-                <p className="text-muted small">₹{item.price.toFixed(2)} each</p>
+          {currentOrder.items?.map((item, index) => (
+            <div
+              key={item.id || index}
+              className="d-flex justify-content-between align-items-center mb-3 p-3 border rounded"
+            >
+              <div className="d-flex align-items-center">
+                <div className="me-3">
+                  <img
+                    src={item.productImage || "/placeholder.svg?height=60&width=60"}
+                    alt={item.productName || item.name}
+                    className="order-item-image"
+                    style={{ width: "60px", height: "60px", objectFit: "cover", borderRadius: "4px" }}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 fw-bold">{item.productName || item.name}</p>
+                  <p className="mb-1 text-muted small">
+                    Quantity: {item.quantity} × ₹{Number.parseFloat(item.unitPrice || item.price).toFixed(2)}
+                  </p>
+                  {item.variant && (
+                    <p className="mb-0 text-muted small">
+                      {item.variant.color && `Color: ${item.variant.color}`}
+                      {item.variant.color && item.variant.carat && " | "}
+                      {item.variant.carat && `Carat: ${item.variant.carat}`}
+                    </p>
+                  )}
+                </div>
               </div>
-              <p>₹{(item.price * item.quantity).toFixed(2)}</p>
+              <div className="text-end">
+                <p className="mb-0 fw-bold">
+                  ₹{Number.parseFloat(item.totalPrice || item.price * item.quantity).toFixed(2)}
+                </p>
+              </div>
             </div>
           ))}
         </div>
-        <div className="mt-3">
-          <div className="d-flex justify-content-between">
-            <p>Subtotal</p>
-            <p>₹{orderDetails.subtotal}</p>
+
+        <div className="mt-4 p-3 bg-light rounded">
+          <div className="d-flex justify-content-between mb-2">
+            <p className="mb-0">Subtotal</p>
+            <p className="mb-0">₹{Number.parseFloat(currentOrder.subtotal).toFixed(2)}</p>
           </div>
-          <div className="d-flex justify-content-between">
-            <p>Shipping</p>
-            <p>₹{orderDetails.shipping.toFixed(2)}</p>
+          <div className="d-flex justify-content-between mb-2">
+            <p className="mb-0">Shipping</p>
+            <p className="mb-0">₹{Number.parseFloat(currentOrder.shipping).toFixed(2)}</p>
           </div>
-          <div className="d-flex justify-content-between">
-            <p>Tax</p>
-            <p>₹{orderDetails.tax}</p>
+          <div className="d-flex justify-content-between mb-2">
+            <p className="mb-0">Tax</p>
+            <p className="mb-0">₹{Number.parseFloat(currentOrder.tax).toFixed(2)}</p>
           </div>
-          {orderDetails.discount > 0 && (
-            <div className="d-flex justify-content-between">
-              <p>Discount</p>
-              <p>-₹{orderDetails.discount}</p>
+          {currentOrder.discount > 0 && (
+            <div className="d-flex justify-content-between mb-2">
+              <p className="mb-0">Discount</p>
+              <p className="mb-0 text-success">-₹{Number.parseFloat(currentOrder.discount).toFixed(2)}</p>
             </div>
           )}
+          <hr />
           <div className="d-flex justify-content-between">
-            <h6>Total</h6>
-            <h6>₹{orderDetails.total}</h6>
+            <h6 className="mb-0">Total</h6>
+            <h6 className="mb-0">₹{Number.parseFloat(currentOrder.total).toFixed(2)}</h6>
           </div>
         </div>
       </div>
+
       <div className="shipping-details mb-4">
         <h5>Shipping Information</h5>
-        <p className="mb-1">{orderDetails.shippingAddress.name}</p>
-        <p className="mb-1">{orderDetails.shippingAddress.street}</p>
-        <p className="mb-1">
-          {orderDetails.shippingAddress.city}, {orderDetails.shippingAddress.state} {orderDetails.shippingAddress.zip}
-        </p>
-        <p className="mb-1">{orderDetails.shippingAddress.country}</p>
-        <p className="mb-1">
-          <strong>Phone:</strong> {orderDetails.shippingAddress.phone}
-        </p>
-        <p className="mb-1">
-          <strong>Payment Method:</strong>{" "}
-          {orderDetails.paymentMethod
-            ? orderDetails.paymentMethod.replace(/([A-Z])/g, " $1").trim()
-            : "Not specified"}
-        </p>
-        {orderDetails.specialInstructions && (
+        <div className="p-3 border rounded">
           <p className="mb-1">
-            <strong>Special Instructions:</strong> {orderDetails.specialInstructions}
+            <strong>{currentOrder.shippingAddress.name}</strong>
           </p>
-        )}
+          <p className="mb-1">{currentOrder.shippingAddress.street}</p>
+          <p className="mb-1">
+            {currentOrder.shippingAddress.city}, {currentOrder.shippingAddress.state} {currentOrder.shippingAddress.zip}
+          </p>
+          <p className="mb-1">{currentOrder.shippingAddress.country}</p>
+          <p className="mb-1">
+            <strong>Phone:</strong> {currentOrder.shippingAddress.phone}
+          </p>
+          <p className="mb-1">
+            <strong>Payment Method:</strong>{" "}
+            {currentOrder.paymentMethod
+              ? currentOrder.paymentMethod.replace(/([A-Z])/g, " $1").trim()
+              : "Not specified"}
+          </p>
+          {currentOrder.specialInstructions && (
+            <p className="mb-1">
+              <strong>Special Instructions:</strong> {currentOrder.specialInstructions}
+            </p>
+          )}
+          {currentOrder.trackingNumber && (
+            <p className="mb-1">
+              <strong>Tracking Number:</strong> {currentOrder.trackingNumber}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="d-flex gap-3 justify-content-center">
-        <PromoNavButton
-          label="Explore Collections"
-          onClick={() => navigate("/collections/dresses")}
-        />
-        <BuyNowButton
-          label="View Orders"
-          onClick={() => navigate("/account/orders")}
-        />
+
+      <div className="d-flex gap-3 justify-content-center flex-wrap">
+        <PromoNavButton label="Continue Shopping" onClick={() => navigate("/collections/dresses")} />
+        <BuyNowButton label="View All Orders" onClick={() => navigate("/account/orders")} />
       </div>
-      {showPopup && orderDetails.items.length > 0 && (
-        <PopupNotificationWrapper
-          orderItem={orderDetails.items[0]}
-          onClose={handlePopupClose}
-        />
+
+      {showPopup && currentOrder.items?.length > 0 && (
+        <PopupNotificationWrapper orderItem={currentOrder.items[0]} onClose={handlePopupClose} />
       )}
+
       <style jsx>{`
         .container {
           padding: 0 16px;
@@ -163,8 +259,15 @@ const CheckoutConfirmation = () => {
         .d-flex.gap-3 {
           display: flex;
           gap: 15px;
-          flex-wrap: nowrap;
+          flex-wrap: wrap;
           justify-content: center;
+        }
+        .badge {
+          font-size: 0.75rem;
+          padding: 0.4em 0.8em;
+        }
+        .order-item-image {
+          border: 1px solid #eee;
         }
         @media (max-width: 768px) {
           .container {
@@ -191,6 +294,9 @@ const CheckoutConfirmation = () => {
           .order-details,
           .shipping-details {
             padding: 15px;
+          }
+          .d-flex.gap-3 {
+            gap: 10px;
           }
         }
         @media (max-width: 576px) {
@@ -219,14 +325,32 @@ const CheckoutConfirmation = () => {
           .shipping-details {
             padding: 12px;
           }
-          .d-flex.gap-3 {
-            gap: 10px;
-            flex-wrap: wrap;
-          }
         }
       `}</style>
     </div>
-  );
-};
+  )
+}
 
-export default CheckoutConfirmation;
+// Helper function to get status badge class
+const getStatusBadgeClass = (status) => {
+  switch (status?.toLowerCase()) {
+    case "pending":
+      return "bg-warning text-dark"
+    case "confirmed":
+      return "bg-info"
+    case "processing":
+      return "bg-primary"
+    case "shipped":
+      return "bg-secondary"
+    case "delivered":
+      return "bg-success"
+    case "cancelled":
+      return "bg-danger"
+    case "refunded":
+      return "bg-dark"
+    default:
+      return "bg-secondary"
+  }
+}
+
+export default CheckoutConfirmation

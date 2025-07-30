@@ -17,18 +17,22 @@ const Order = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: "users",
+        key: "id",
+      },
     },
     status: {
-      type: DataTypes.ENUM("pending", "processing", "shipped", "delivered", "cancelled", "returned"),
+      type: DataTypes.ENUM("pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"),
       defaultValue: "pending",
-    },
-    paymentMethod: {
-      type: DataTypes.STRING(50),
-      defaultValue: "creditCard",
     },
     paymentStatus: {
       type: DataTypes.ENUM("pending", "paid", "failed", "refunded"),
       defaultValue: "pending",
+    },
+    paymentMethod: {
+      type: DataTypes.ENUM("creditCard", "debitCard", "paypal", "cashOnDelivery"),
+      defaultValue: "creditCard",
     },
     subtotal: {
       type: DataTypes.DECIMAL(10, 2),
@@ -59,22 +63,6 @@ const Order = sequelize.define(
       type: DataTypes.STRING(3),
       defaultValue: "INR",
     },
-    specialInstructions: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    estimatedDeliveryDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    actualDeliveryDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    trackingNumber: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
     shippingAddress: {
       type: DataTypes.JSON,
       allowNull: false,
@@ -83,27 +71,58 @@ const Order = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
-    orderDate: {
+    specialInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    couponCode: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    trackingNumber: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    estimatedDelivery: {
       type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
+      allowNull: true,
+    },
+    deliveredAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    cancelledAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    refundedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
   },
   {
-    tableName: "orders", // Use lowercase table name to match SQL
+    tableName: "orders",
     timestamps: true,
     indexes: [
       {
-        fields: ["userId", "status"],
-      },
-      {
-        fields: ["orderDate", "status"],
+        fields: ["userId"],
       },
       {
         fields: ["status"],
       },
       {
         fields: ["paymentStatus"],
+      },
+      {
+        fields: ["createdAt"],
+      },
+      {
+        unique: true,
+        fields: ["orderNumber"],
       },
     ],
   },

@@ -12,28 +12,38 @@ const OrderStatusHistory = sequelize.define(
     orderId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "orders",
+        key: "id",
+      },
     },
     status: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.ENUM("pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"),
       allowNull: false,
     },
-    notes: {
+    comment: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
     changedBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: true,
-    },
-    changedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
     },
   },
   {
-    tableName: "order_status_history", // Use lowercase table name to match SQL
-    timestamps: false,
+    tableName: "order_status_history",
+    timestamps: true,
+    indexes: [
+      {
+        fields: ["orderId"],
+      },
+      {
+        fields: ["status"],
+      },
+      {
+        fields: ["createdAt"],
+      },
+    ],
   },
 )
 

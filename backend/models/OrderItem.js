@@ -12,13 +12,21 @@ const OrderItem = sequelize.define(
     orderId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "orders",
+        key: "id",
+      },
     },
     productId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "products",
+        key: "id",
+      },
     },
     productName: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.STRING,
       allowNull: false,
     },
     productImage: {
@@ -37,14 +45,16 @@ const OrderItem = sequelize.define(
     unitPrice: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      defaultValue: 0.0,
     },
     totalPrice: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      defaultValue: 0.0,
     },
   },
   {
-    tableName: "order_items", // Use lowercase table name to match SQL
+    tableName: "order_items",
     timestamps: true,
     indexes: [
       {
@@ -52,9 +62,6 @@ const OrderItem = sequelize.define(
       },
       {
         fields: ["productId"],
-      },
-      {
-        fields: ["productId", "orderId"],
       },
     ],
   },
