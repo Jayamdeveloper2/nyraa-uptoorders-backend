@@ -1,4 +1,4 @@
-
+"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { Search, Plus, Edit, Trash2, Eye, Download, Upload } from "lucide-react"
@@ -8,7 +8,7 @@ import axios from "axios"
 
 const API_BASE_URL = "http://localhost:5000/api"
 
-// Basic Modal Component (Replace with your actual Modal if available)
+// Basic Modal Component
 const Modal = ({ isOpen, onClose, title, size = "lg", children }) => {
   if (!isOpen) return null
   const sizeClasses = {
@@ -19,20 +19,21 @@ const Modal = ({ isOpen, onClose, title, size = "lg", children }) => {
   }
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className={`bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size] || sizeClasses.lg} max-h-[90vh] overflow-y-auto m-4`}>
+      <div
+        className={`bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size] || sizeClasses.lg} max-h-[90vh] overflow-y-auto m-4`}
+      >
         {title && (
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
           </div>
         )}
         <div className="p-4">{children}</div>
-        
       </div>
     </div>
   )
 }
 
-// Basic ConfirmDialog Component (Replace with your actual ConfirmDialog if available)
+// Basic ConfirmDialog Component
 const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message, type }) => {
   if (!isOpen) return null
   return (
@@ -83,6 +84,34 @@ const Products = () => {
   const { addToast } = useToast()
   const navigate = useNavigate()
 
+  // Helper function to normalize image URLs
+  const normalizeImageUrl = (imageUrl) => {
+    if (!imageUrl) return "/placeholder.svg?height=48&width=48"
+
+    // If it's already a full URL, return as is
+    if (imageUrl.startsWith("http")) {
+      // Remove multiple cache busters
+      return imageUrl.split("?cb=")[0]
+    }
+
+    // If it's a relative path, construct full URL
+    return `${API_BASE_URL.replace("/api", "")}/${imageUrl}`
+  }
+
+  // Helper function to parse JSON safely
+  const parseJsonSafely = (jsonString, fallback = []) => {
+    if (!jsonString) return fallback
+    if (Array.isArray(jsonString)) return jsonString
+    if (typeof jsonString === "object") return jsonString
+
+    try {
+      return JSON.parse(jsonString)
+    } catch (error) {
+      console.error("Error parsing JSON:", error)
+      return fallback
+    }
+  }
+
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true)
@@ -110,23 +139,41 @@ const Products = () => {
       })
 
       if (response.data.success) {
-        const normalizedProducts = response.data.data.products.map((product) => ({
-          ...product,
-          images: Array.isArray(product.images) ? product.images : [],
-          image: product.images?.[0] || "/placeholder.svg?height=48&width=48",
-          variants: Array.isArray(product.variants)
-            ? product.variants.map((v) => ({
-                color: v.color || "N/A",
-                size: v.size || "N/A",
-                price: v.price || 0,
-                originalPrice: v.originalPrice || null,
-              }))
-            : [],
-          cat_slug: product.cat_slug || product.categoryName || "N/A",
-          categoryName: product.categoryName || product.cat_slug || "N/A",
-        }))
+        const normalizedProducts = response.data.data.products.map((product) => {
+          // Parse images safely
+          const images = parseJsonSafely(product.images, [])
+          const normalizedImages = images.map((img) => normalizeImageUrl(img))
 
-        console.log("Fetched products:", normalizedProducts.length)
+          // Parse variants safely
+          const variants = parseJsonSafely(product.variants, [])
+          const normalizedVariants = variants.map((variant) => ({
+            color: variant.color || "N/A",
+            size: variant.size || "N/A",
+            type: variant.type || "N/A",
+            price: Number.parseFloat(variant.price) || 0,
+            originalPrice: variant.originalPrice ? Number.parseFloat(variant.originalPrice) : null,
+            quantity: Number.parseInt(variant.quantity) || 0,
+          }))
+
+          // Parse specifications safely
+          const specifications = parseJsonSafely(product.specifications, [])
+          const normalizedSpecs = specifications.map((spec) => ({
+            fabric: spec.Fabric || spec.fabric || "N/A",
+            ...spec,
+          }))
+
+          return {
+            ...product,
+            images: normalizedImages,
+            image: normalizedImages[0] || "/placeholder.svg?height=48&width=48",
+            variants: normalizedVariants,
+            specifications: normalizedSpecs,
+            categoryName: product.categoryName || product.category?.category || "N/A",
+            cat_slug: product.cat_slug || product.category?.cat_slug || "N/A",
+          }
+        })
+
+        console.log("Normalized products:", normalizedProducts)
         setProducts(normalizedProducts)
         setTotalPages(response.data.data.pagination.totalPages)
       } else {
@@ -139,7 +186,17 @@ const Products = () => {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, searchQuery, selectedCategory, selectedStatus, sortBy, sortOrder, itemsPerPage, cacheBuster])
+  }, [
+    currentPage,
+    searchQuery,
+    selectedCategory,
+    selectedStatus,
+    sortBy,
+    sortOrder,
+    itemsPerPage,
+    cacheBuster,
+    addToast,
+  ])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -191,15 +248,9 @@ const Products = () => {
     try {
       setSelectedProduct({
         ...product,
-        images: Array.isArray(product.images) ? product.images.map((img) => `${img}?cb=${Date.now()}`) : [],
-        variants: Array.isArray(product.variants)
-          ? product.variants.map((v) => ({
-              color: v.color || "N/A",
-              size: v.size || "N/A",
-              price: v.price || 0,
-              originalPrice: v.originalPrice || null,
-            }))
-          : [],
+        images: product.images || [],
+        variants: product.variants || [],
+        specifications: product.specifications || [],
       })
       setShowViewModal(true)
     } catch (error) {
@@ -363,6 +414,9 @@ const Products = () => {
                     Variants
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                    Price Range
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
@@ -371,77 +425,104 @@ const Products = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {products.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={product.image || "/placeholder.svg"}
-                          alt={product.name || "Product"}
-                          className="w-12 h-14 object-cover rounded-md"
-                          onError={(e) => {
-                            e.target.src = "/products.png"
-                          }}
-                        />
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900">{product.name || "N/A"}</h4>
-                          <p className="text-xs text-gray-500">{product.brand || ""}</p>
+                {products.map((product) => {
+                  const prices = product.variants.map((v) => v.price).filter((p) => p > 0)
+                  const minPrice = prices.length > 0 ? Math.min(...prices) : 0
+                  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0
+
+                  return (
+                    <tr key={product.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={product.image || "/placeholder.svg"}
+                            alt={product.name || "Product"}
+                            className="w-12 h-14 object-cover rounded-md"
+                            onError={(e) => {
+                              e.target.src = "/placeholder.svg?height=48&width=48"
+                            }}
+                          />
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900">{product.name || "N/A"}</h4>
+                            <p className="text-xs text-gray-500">{product.brand || ""}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{product.categoryName || "N/A"}</span>
-                        {/* <span className="text-xs text-gray-500">{product.cat_slug || ""}</span> */}
-                      </div>
-                    </td>
-                    
-                  
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
-                      {product.variants.length > 0
-                        ? product.variants.map((variant) => `${variant.color} (${variant.size})`).join(", ")
-                        : "N/A"}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          product.status === "active"
-                            ? "bg-green-100 text-green-800"
-                            : product.status === "inactive"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {product.status?.toUpperCase() || "N/A"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => openViewModal(product)}
-                          className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                          title="View Details"
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{product.categoryName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        <div className="flex flex-wrap gap-1">
+                          {product.variants.length > 0 ? (
+                            product.variants.slice(0, 2).map((variant, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800"
+                              >
+                                {variant.color} ({variant.size})
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-500">No variants</span>
+                          )}
+                          {product.variants.length > 2 && (
+                            <span className="text-xs text-gray-500">+{product.variants.length - 2} more</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        {minPrice > 0 && maxPrice > 0 ? (
+                          <div>
+                            <span className="font-medium">₹{minPrice}</span>
+                            {minPrice !== maxPrice && <span> - ₹{maxPrice}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">N/A</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            product.status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : product.status === "inactive"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
                         >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleEditProduct(product)}
-                          className="p-1 text-indigo-600 hover:bg-indigo-100 rounded"
-                          title="Edit Product"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => openDeleteDialog(product)}
-                          className="p-1 text-red-600 hover:bg-red-100 rounded"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {product.status?.toUpperCase() || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => openViewModal(product)}
+                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                            title="View Details"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleEditProduct(product)}
+                            className="p-1 text-indigo-600 hover:bg-indigo-100 rounded"
+                            title="Edit Product"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => openDeleteDialog(product)}
+                            className="p-1 text-red-600 hover:bg-red-100 rounded"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -486,16 +567,16 @@ const Products = () => {
                   alt={product.name}
                   className="w-16 h-20 object-cover rounded-md"
                   onError={(e) => {
-                    e.target.src = "/products.png"
+                    e.target.src = "/placeholder.svg?height=64&width=64"
                   }}
                 />
                 <div className="flex-1">
                   <h4 className="font-medium text-gray-900">{product.name || "N/A"}</h4>
                   <p className="text-sm text-gray-600 mt-1">{product.categoryName || "N/A"}</p>
-                  <p className="text-xs text-gray-500">{product.cat_slug || ""}</p>
+                  <p className="text-xs text-gray-500">{product.brand || ""}</p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {product.variants.length > 0 ? (
-                      product.variants.map((variant, i) => (
+                      product.variants.slice(0, 2).map((variant, i) => (
                         <span key={i} className="text-xs px-2 py-1 bg-gray-100 rounded">
                           {`${variant.color} (${variant.size})`}
                         </span>
@@ -642,15 +723,26 @@ const Products = () => {
                       <p className="text-xs font-medium text-gray-500 uppercase">Category</p>
                       <p className="text-sm font-semibold text-gray-900">{selectedProduct.categoryName || "N/A"}</p>
                     </div>
-                 
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase">Material</p>
                       <p className="text-sm font-semibold text-gray-900">{selectedProduct.material || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase">Total Variants</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedProduct.variants?.length || 0}</p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Description */}
+            {selectedProduct.description && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                <p className="text-gray-700 text-sm leading-relaxed">{selectedProduct.description}</p>
+              </div>
+            )}
 
             {/* Variants */}
             <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -659,15 +751,23 @@ const Products = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {selectedProduct.variants.map((variant, i) => (
                     <div key={i} className="border border-gray-200 rounded-lg p-3">
-                      <div className="flex justify-between">
-                        <span className="font-medium">{variant.color || "N/A"}</span>
-                        <span className="text-sm bg-gray-100 px-2 py-1 rounded">{variant.size || "N/A"}</span>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="font-medium text-gray-900">{variant.color || "N/A"}</span>
+                          <span className="text-sm bg-gray-100 px-2 py-1 rounded ml-2">{variant.size || "N/A"}</span>
+                        </div>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                          {variant.type || "N/A"}
+                        </span>
                       </div>
-                      <div className="mt-2">
-                        <span className="text-lg font-bold text-green-600">₹{variant.price || 0}</span>
-                        {variant.originalPrice && variant.originalPrice !== variant.price && (
-                          <span className="text-sm text-gray-500 line-through ml-2">₹{variant.originalPrice}</span>
-                        )}
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-lg font-bold text-green-600">₹{variant.price || 0}</span>
+                          {variant.originalPrice && variant.originalPrice !== variant.price && (
+                            <span className="text-sm text-gray-500 line-through ml-2">₹{variant.originalPrice}</span>
+                          )}
+                        </div>
+                        <span className="text-sm text-gray-600">Qty: {variant.quantity || 0}</span>
                       </div>
                     </div>
                   ))}
@@ -676,6 +776,21 @@ const Products = () => {
                 <p className="text-gray-500">No variants available</p>
               )}
             </div>
+
+            {/* Specifications */}
+            {selectedProduct.specifications?.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Specifications</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {selectedProduct.specifications.map((spec, i) => (
+                    <div key={i} className="flex justify-between py-2 border-b border-gray-100 last:border-b-0">
+                      <span className="text-sm font-medium text-gray-600">Fabric:</span>
+                      <span className="text-sm text-gray-900">{spec.fabric || spec.Fabric || "N/A"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-3">
