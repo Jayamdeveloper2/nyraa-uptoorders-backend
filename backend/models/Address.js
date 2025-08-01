@@ -5,7 +5,7 @@ const Address = sequelize.define(
   "Address",
   {
     id: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
@@ -22,7 +22,7 @@ const Address = sequelize.define(
       allowNull: false,
     },
     street: {
-      type: DataTypes.STRING(500),
+      type: DataTypes.STRING,
       allowNull: false,
     },
     city: {
@@ -34,7 +34,7 @@ const Address = sequelize.define(
       allowNull: false,
     },
     zip: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING,
       allowNull: false,
     },
     country: {
@@ -42,7 +42,7 @@ const Address = sequelize.define(
       defaultValue: "United States",
     },
     phone: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING,
       allowNull: false,
     },
     type: {
@@ -60,9 +60,6 @@ const Address = sequelize.define(
     indexes: [
       {
         fields: ["userId"],
-      },
-      {
-        fields: ["isDefault"],
       },
     ],
   },
