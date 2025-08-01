@@ -10,6 +10,8 @@ const colorRoutes = require("./routes/units/colorRoutes")
 const sizeRoutes = require("./routes/units/sizeRoutes")
 const orderRoutes = require("./routes/orderRoutes")
 const healthRoutes = require("./routes/healthRoutes")
+const addressRoutes = require("./routes/addressRoutes")
+
 const Admin = require("./models/Admin")
 const User = require("./models/User")
 const Product = require("./models/Product")
@@ -106,6 +108,8 @@ app.use("/api/categories", categoryRoutes)
 app.use("/api", colorRoutes)
 app.use("/api", sizeRoutes)
 app.use("/api/orders", orderRoutes) // Fixed: Use /api/orders prefix
+app.use("/api/addresses", addressRoutes)
+
 
 async function testConnection() {
   try {
@@ -144,11 +148,11 @@ async function startServer() {
         phone: "+91 98765 43210",
         department: "Administration",
         avatar: "",
-        joinDate: new Date().toISOString().split("T")[0],
+        joinDate: new Date().toISOString().split("T")[0], 
         role: "Administrator",
       })
 
-      console.log("✅ Default admin user created")
+      console.log("✅ Default admin user created") 
     }
 
     app.listen(PORT, () => {
