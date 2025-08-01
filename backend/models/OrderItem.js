@@ -5,28 +5,32 @@ const OrderItem = sequelize.define(
   "OrderItem",
   {
     id: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
     orderId: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: "orders",
+        key: "id",
+      },
     },
     productId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
+      references: {
+        model: "products",
+        key: "id",
+      },
     },
     productName: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.STRING,
       allowNull: false,
     },
     productImage: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-    },
-    variant: {
-      type: DataTypes.JSON,
+      type: DataTypes.STRING,
       allowNull: true,
     },
     quantity: {
@@ -34,17 +38,21 @@ const OrderItem = sequelize.define(
       allowNull: false,
       defaultValue: 1,
     },
-    unitPrice: {
+    price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
-    totalPrice: {
+    originalPrice: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
+      allowNull: true,
+    },
+    variant: {
+      type: DataTypes.JSON,
+      allowNull: true,
     },
   },
   {
-    tableName: "order_items", // Use lowercase table name to match SQL
+    tableName: "order_items",
     timestamps: true,
     indexes: [
       {
@@ -52,9 +60,6 @@ const OrderItem = sequelize.define(
       },
       {
         fields: ["productId"],
-      },
-      {
-        fields: ["productId", "orderId"],
       },
     ],
   },

@@ -3,14 +3,16 @@ const router = express.Router()
 const orderController = require("../controllers/orderController")
 const authMiddleware = require("../middleware/authMiddleware")
 
-// All order routes require authentication
+// Apply auth middleware to all routes
 router.use(authMiddleware)
 
-// Order routes
+// User routes
 router.post("/", orderController.createOrder)
 router.get("/", orderController.getUserOrders)
-router.get("/stats", orderController.getOrderStats)
-router.get("/:orderId", orderController.getOrder)
-router.patch("/:orderId/status", orderController.updateOrderStatus)
+router.get("/:id", orderController.getOrder)
+
+// Admin routes
+router.patch("/:id/status", orderController.updateOrderStatus)
+router.get("/admin/stats", orderController.getOrderStats)
 
 module.exports = router

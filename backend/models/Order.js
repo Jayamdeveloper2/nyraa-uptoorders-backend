@@ -5,29 +5,25 @@ const Order = sequelize.define(
   "Order",
   {
     id: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
     orderNumber: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.STRING,
       allowNull: false,
       unique: true,
     },
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: "users",
+        key: "id",
+      },
     },
     status: {
-      type: DataTypes.ENUM("pending", "processing", "shipped", "delivered", "cancelled", "returned"),
-      defaultValue: "pending",
-    },
-    paymentMethod: {
-      type: DataTypes.STRING(50),
-      defaultValue: "creditCard",
-    },
-    paymentStatus: {
-      type: DataTypes.ENUM("pending", "paid", "failed", "refunded"),
+      type: DataTypes.ENUM("pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"),
       defaultValue: "pending",
     },
     subtotal: {
@@ -55,52 +51,51 @@ const Order = sequelize.define(
       allowNull: false,
       defaultValue: 0.0,
     },
-    currency: {
-      type: DataTypes.STRING(3),
-      defaultValue: "INR",
+    paymentMethod: {
+      type: DataTypes.STRING,
+      defaultValue: "creditCard",
     },
-    specialInstructions: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    estimatedDeliveryDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    actualDeliveryDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    trackingNumber: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
+    paymentStatus: {
+      type: DataTypes.ENUM("pending", "paid", "failed", "refunded"),
+      defaultValue: "pending",
     },
     shippingAddress: {
       type: DataTypes.JSON,
       allowNull: false,
     },
-    billingAddress: {
-      type: DataTypes.JSON,
+    specialInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    couponCode: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
     orderDate: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW,
+    },
+    deliveryDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    trackingNumber: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
   },
   {
-    tableName: "orders", // Use lowercase table name to match SQL
+    tableName: "orders",
     timestamps: true,
     indexes: [
       {
-        fields: ["userId", "status"],
-      },
-      {
-        fields: ["orderDate", "status"],
+        fields: ["userId"],
       },
       {
         fields: ["status"],
+      },
+      {
+        fields: ["orderDate"],
       },
       {
         fields: ["paymentStatus"],

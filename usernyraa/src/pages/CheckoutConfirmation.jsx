@@ -1,38 +1,49 @@
-// src/components/CheckoutConfirmation.jsx
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { PromoNavButton, BuyNowButton } from "../components/ui/Buttons";
-import IconLink from "../components/ui/Icons";
-import PopupNotificationWrapper from "../components/PopupNotificationWrapper/PopupNotificationWrapper";
-import { getOrders } from '../data/profileData';
+"use client"
+
+import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { useSelector, useDispatch } from "react-redux"
+import { PromoNavButton, BuyNowButton } from "../components/ui/Buttons"
+import IconLink from "../components/ui/Icons"
+import PopupNotificationWrapper from "../components/PopupNotificationWrapper/PopupNotificationWrapper"
+import { clearLastCreatedOrder } from "../store/orderSlice"
 
 const CheckoutConfirmation = () => {
-  const navigate = useNavigate();
-  const [orderDetails, setOrderDetails] = useState(null);
-  const [showPopup, setShowPopup] = useState(false);
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  const { lastCreatedOrder } = useSelector((state) => state.orders)
+  const [showPopup, setShowPopup] = useState(false)
 
   useEffect(() => {
-    const lastOrder = JSON.parse(localStorage.getItem("lastOrder"));
-    if (lastOrder) {
-      setOrderDetails(lastOrder);
-      setShowPopup(true);
+    if (lastCreatedOrder && lastCreatedOrder.items && lastCreatedOrder.items.length > 0) {
+      setShowPopup(true)
     } else {
-      const orders = getOrders();
-      const recentOrder = orders[orders.length - 1];
-      if (recentOrder) {
-        setOrderDetails(recentOrder);
-        setShowPopup(true);
-      }
+      // If no order found, redirect to home
+      navigate("/")
     }
-  }, []);
-
-  if (!orderDetails) {
-    return <div className="container my-5 text-center">No order found.</div>;
-  }
+  }, [lastCreatedOrder, navigate])
 
   const handlePopupClose = () => {
-    setShowPopup(false);
-  };
+    setShowPopup(false)
+  }
+
+  const handleViewOrders = () => {
+    dispatch(clearLastCreatedOrder())
+    navigate("/account/orders")
+  }
+
+  const handleExploreCollections = () => {
+    dispatch(clearLastCreatedOrder())
+    navigate("/collections/dresses")
+  }
+
+  if (!lastCreatedOrder) {
+    return (
+      <div className="container my-5 text-center">
+        <p>No order found. Redirecting...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="container my-5">
@@ -40,84 +51,97 @@ const CheckoutConfirmation = () => {
         <IconLink iconType="guarantee" isSupport={true} className="guarantee-icon mb-3" />
         <h1 className="mb-2">Order Confirmation</h1>
         <p className="mb-4">Thank you for your order! Your order has been successfully placed.</p>
+        <div className="order-number mb-3">
+          <strong>Order Number: {lastCreatedOrder.orderNumber}</strong>
+        </div>
       </div>
+
       <div className="order-details mb-4">
         <h5>Order Summary</h5>
         <div className="order-items mt-3">
-          {orderDetails.items.map((item) => (
+          {lastCreatedOrder.items.map((item) => (
             <div key={item.id} className="d-flex justify-content-between mb-2">
               <div>
-                <p className="mb-0">{item.name} (x{item.quantity})</p>
-                <p className="text-muted small">₹{item.price.toFixed(2)} each</p>
+                <p className="mb-0">
+                  {item.productName} (x{item.quantity})
+                </p>
+                <p className="text-muted small">₹{Number.parseFloat(item.price).toFixed(2)} each</p>
+                {item.variant && (
+                  <p className="text-muted small">
+                    {item.variant.color && `Color: ${item.variant.color} `}
+                    {item.variant.size && `Size: ${item.variant.size} `}
+                    {item.variant.carat && `Carat: ${item.variant.carat}`}
+                  </p>
+                )}
               </div>
-              <p>₹{(item.price * item.quantity).toFixed(2)}</p>
+              <p>₹{(Number.parseFloat(item.price) * item.quantity).toFixed(2)}</p>
             </div>
           ))}
         </div>
+
         <div className="mt-3">
           <div className="d-flex justify-content-between">
             <p>Subtotal</p>
-            <p>₹{orderDetails.subtotal}</p>
+            <p>₹{Number.parseFloat(lastCreatedOrder.subtotal).toFixed(2)}</p>
           </div>
           <div className="d-flex justify-content-between">
             <p>Shipping</p>
-            <p>₹{orderDetails.shipping.toFixed(2)}</p>
+            <p>₹{Number.parseFloat(lastCreatedOrder.shipping).toFixed(2)}</p>
           </div>
           <div className="d-flex justify-content-between">
             <p>Tax</p>
-            <p>₹{orderDetails.tax}</p>
+            <p>₹{Number.parseFloat(lastCreatedOrder.tax).toFixed(2)}</p>
           </div>
-          {orderDetails.discount > 0 && (
+          {Number.parseFloat(lastCreatedOrder.discount) > 0 && (
             <div className="d-flex justify-content-between">
               <p>Discount</p>
-              <p>-₹{orderDetails.discount}</p>
+              <p>-₹{Number.parseFloat(lastCreatedOrder.discount).toFixed(2)}</p>
             </div>
           )}
           <div className="d-flex justify-content-between">
             <h6>Total</h6>
-            <h6>₹{orderDetails.total}</h6>
+            <h6>₹{Number.parseFloat(lastCreatedOrder.total).toFixed(2)}</h6>
           </div>
         </div>
       </div>
+
       <div className="shipping-details mb-4">
         <h5>Shipping Information</h5>
-        <p className="mb-1">{orderDetails.shippingAddress.name}</p>
-        <p className="mb-1">{orderDetails.shippingAddress.street}</p>
+        <p className="mb-1">{lastCreatedOrder.shippingAddress.name}</p>
+        <p className="mb-1">{lastCreatedOrder.shippingAddress.street}</p>
         <p className="mb-1">
-          {orderDetails.shippingAddress.city}, {orderDetails.shippingAddress.state} {orderDetails.shippingAddress.zip}
+          {lastCreatedOrder.shippingAddress.city}, {lastCreatedOrder.shippingAddress.state}{" "}
+          {lastCreatedOrder.shippingAddress.zip}
         </p>
-        <p className="mb-1">{orderDetails.shippingAddress.country}</p>
+        <p className="mb-1">{lastCreatedOrder.shippingAddress.country}</p>
         <p className="mb-1">
-          <strong>Phone:</strong> {orderDetails.shippingAddress.phone}
+          <strong>Phone:</strong> {lastCreatedOrder.shippingAddress.phone}
         </p>
         <p className="mb-1">
           <strong>Payment Method:</strong>{" "}
-          {orderDetails.paymentMethod
-            ? orderDetails.paymentMethod.replace(/([A-Z])/g, " $1").trim()
+          {lastCreatedOrder.paymentMethod
+            ? lastCreatedOrder.paymentMethod.replace(/([A-Z])/g, " $1").trim()
             : "Not specified"}
         </p>
-        {orderDetails.specialInstructions && (
+        <p className="mb-1">
+          <strong>Status:</strong> {lastCreatedOrder.status.charAt(0).toUpperCase() + lastCreatedOrder.status.slice(1)}
+        </p>
+        {lastCreatedOrder.specialInstructions && (
           <p className="mb-1">
-            <strong>Special Instructions:</strong> {orderDetails.specialInstructions}
+            <strong>Special Instructions:</strong> {lastCreatedOrder.specialInstructions}
           </p>
         )}
       </div>
+
       <div className="d-flex gap-3 justify-content-center">
-        <PromoNavButton
-          label="Explore Collections"
-          onClick={() => navigate("/collections/dresses")}
-        />
-        <BuyNowButton
-          label="View Orders"
-          onClick={() => navigate("/account/orders")}
-        />
+        <PromoNavButton label="Explore Collections" onClick={handleExploreCollections} />
+        <BuyNowButton label="View Orders" onClick={handleViewOrders} />
       </div>
-      {showPopup && orderDetails.items.length > 0 && (
-        <PopupNotificationWrapper
-          orderItem={orderDetails.items[0]}
-          onClose={handlePopupClose}
-        />
+
+      {showPopup && lastCreatedOrder.items.length > 0 && (
+        <PopupNotificationWrapper orderItem={lastCreatedOrder.items[0]} onClose={handlePopupClose} />
       )}
+
       <style jsx>{`
         .container {
           padding: 0 16px;
@@ -155,6 +179,11 @@ const CheckoutConfirmation = () => {
           border-radius: 8px;
           background-color: #fff;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .order-number {
+          font-size: 1.1rem;
+          color: #c5a47e;
+          font-weight: 600;
         }
         .guarantee-icon {
           font-size: 3rem;
@@ -226,7 +255,7 @@ const CheckoutConfirmation = () => {
         }
       `}</style>
     </div>
-  );
-};
+  )
+}
 
-export default CheckoutConfirmation;
+export default CheckoutConfirmation
