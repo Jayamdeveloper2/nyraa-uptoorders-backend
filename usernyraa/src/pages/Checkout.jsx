@@ -2,26 +2,29 @@
 
 import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { Form, FormCheck, Modal } from "react-bootstrap"
+import { Form, FormCheck, Modal, Button, Alert } from "react-bootstrap"
 import { useSelector, useDispatch } from "react-redux"
 import { toast, ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
-import { AddAddressButton, ConfirmOrderButton } from "../components/ui/Buttons"
-import { getAddresses, saveAddress, getUserData } from "../data/profileData"
-import { createOrder } from "../store/orderSlice"
-import { removeFromCart } from "../store/cartSlice"
+import { createOrder, clearError } from "../store/orderSlice"
+import { clearCart } from "../store/cartSlice"
+import { fetchAddresses, createAddress, clearError as clearAddressError } from "../store/addressSlice"
+import { getUserData } from "../data/profileData"
 
 const Checkout = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const location = useLocation()
   const cartItems = useSelector((state) => state.cart.items)
-  const { loading, error } = useSelector((state) => state.orders)
+  const { loading: orderLoading, error: orderError } = useSelector((state) => state.orders)
+  const { addresses, loading: addressLoading, error: addressError } = useSelector((state) => state.addresses)
 
-  const [addresses, setAddresses] = useState(getAddresses())
+  // State for selected address
   const [selectedAddressId, setSelectedAddressId] = useState(null)
   const [showAddressModal, setShowAddressModal] = useState(false)
-  const [formData, setFormData] = useState({
+
+  // State for address form
+  const [addressForm, setAddressForm] = useState({
     name: "",
     street: "",
     city: "",
@@ -31,72 +34,72 @@ const Checkout = () => {
     phone: "",
     isDefault: false,
     type: "home",
-    paymentMethod: "creditCard",
   })
-  const [couponCode, setCouponCode] = useState("")
-  const [couponDiscount, setCouponDiscount] = useState(0)
-  const [specialInstructions, setSpecialInstructions] = useState("")
-  const [isLoggedIn, setIsLoggedIn] = useState(!!getUserData().email)
 
+  // State for order details
+  const [orderDetails, setOrderDetails] = useState({
+    paymentMethod: "creditCard",
+    specialInstructions: "",
+    couponCode: "",
+    couponDiscount: 0,
+  })
+
+  // State for validation and UI
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [formErrors, setFormErrors] = useState({})
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  // Initialize component
   useEffect(() => {
     window.scrollTo(0, 0)
+    initializeCheckout()
   }, [location.pathname])
 
+  // Handle order errors
   useEffect(() => {
-    setAddresses(getAddresses())
-    const defaultAddress = getAddresses().find((addr) => addr.isDefault)
-    if (defaultAddress) {
-      setSelectedAddressId(defaultAddress.id)
-    }
-
-    if (!isLoggedIn) {
-      toast.error(
-        <div className="toast-content">
-          <p className="mb-3">Please log in to proceed with checkout.</p>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
-            Go to Login
-          </button>
-        </div>,
-        {
-          position: "top-center",
-          autoClose: 5000,
-          closeOnClick: false,
-          draggable: false,
-        },
-      )
-      navigate("/login")
-    }
-  }, [navigate, isLoggedIn])
-
-  useEffect(() => {
-    if (error) {
-      toast.error(error, {
+    if (orderError) {
+      toast.error(orderError, {
         position: "top-right",
         autoClose: 5000,
       })
+      dispatch(clearError())
     }
-  }, [error])
+  }, [orderError, dispatch])
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }))
-  }
+  // Handle address errors
+  useEffect(() => {
+    if (addressError) {
+      toast.error(addressError, {
+        position: "top-right",
+        autoClose: 5000,
+      })
+      dispatch(clearAddressError())
+    }
+  }, [addressError, dispatch])
 
-  const handleAddressSelect = (id) => {
-    setSelectedAddressId(id)
-  }
+  // Set default address when addresses are loaded
+  useEffect(() => {
+    if (addresses.length > 0 && !selectedAddressId) {
+      const defaultAddress = addresses.find((addr) => addr.isDefault)
+      if (defaultAddress) {
+        setSelectedAddressId(defaultAddress.id)
+      } else {
+        // If no default, select the first address
+        setSelectedAddressId(addresses[0].id)
+      }
+    }
+  }, [addresses, selectedAddressId])
 
-  const handleAddAddressClick = () => {
-    if (!isLoggedIn) {
+  const initializeCheckout = () => {
+    const userData = getUserData()
+    if (!userData.email) {
+      setIsLoggedIn(false)
       toast.error(
         <div className="toast-content">
-          <p className="mb-3">Please log in to add a shipping address.</p>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
+          <p className="mb-3">Please log in to proceed with checkout.</p>
+          <Button size="sm" onClick={() => navigate("/login")}>
             Go to Login
-          </button>
+          </Button>
         </div>,
         {
           position: "top-center",
@@ -108,24 +111,65 @@ const Checkout = () => {
       navigate("/login")
       return
     }
-    setShowAddressModal(true)
+
+    setIsLoggedIn(true)
+    // Load addresses from database
+    dispatch(fetchAddresses())
   }
 
-  const handleAddNewAddress = (e) => {
-    e.preventDefault()
-    const { name, street, city, state, zip, phone } = formData
-    if (!name || !street || !city || !state || !zip || !phone) {
-      toast.error("Please fill all required fields.", {
-        position: "top-right",
-        autoClose: 3000,
-      })
+  const handleAddressFormChange = (e) => {
+    const { name, value, type, checked } = e.target
+    setAddressForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
+
+    // Clear specific field error
+    if (formErrors[name]) {
+      setFormErrors((prev) => ({ ...prev, [name]: null }))
+    }
+  }
+
+  const handleOrderDetailsChange = (e) => {
+    const { name, value } = e.target
+    setOrderDetails((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const validateAddressForm = () => {
+    const errors = {}
+    const required = ["name", "street", "city", "state", "zip", "phone"]
+
+    required.forEach((field) => {
+      if (!addressForm[field] || addressForm[field].trim() === "") {
+        errors[field] = `${field.charAt(0).toUpperCase() + field.slice(1)} is required`
+      }
+    })
+
+    // Phone validation
+    if (addressForm.phone && !/^\+?[\d\s-()]+$/.test(addressForm.phone)) {
+      errors.phone = "Please enter a valid phone number"
+    }
+
+    // ZIP code validation (flexible for international)
+    if (addressForm.zip && !/^[\w\s-]{3,10}$/.test(addressForm.zip)) {
+      errors.zip = "Please enter a valid postal code"
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleAddAddress = () => {
+    if (!isLoggedIn) {
+      toast.error("Please log in to add a shipping address.")
+      navigate("/login")
       return
     }
-    const updatedAddresses = saveAddress(formData)
-    setAddresses(updatedAddresses)
-    setSelectedAddressId(formData.id || Date.now())
-    setShowAddressModal(false)
-    setFormData({
+
+    setAddressForm({
       name: "",
       street: "",
       city: "",
@@ -135,77 +179,151 @@ const Checkout = () => {
       phone: "",
       isDefault: false,
       type: "home",
-      paymentMethod: "creditCard",
     })
-    toast.success("Address added successfully", {
-      position: "top-right",
-      autoClose: 3000,
-    })
+    setFormErrors({})
+    setShowAddressModal(true)
+  }
+
+  const handleSaveAddress = async (e) => {
+    e.preventDefault()
+
+    if (!validateAddressForm()) {
+      return
+    }
+
+    try {
+      const newAddress = await dispatch(createAddress(addressForm)).unwrap()
+      setSelectedAddressId(newAddress.id)
+      setShowAddressModal(false)
+
+      toast.success("Address added successfully", {
+        position: "top-right",
+        autoClose: 3000,
+      })
+
+      // Reset form
+      setAddressForm({
+        name: "",
+        street: "",
+        city: "",
+        state: "",
+        zip: "",
+        country: "United States",
+        phone: "",
+        isDefault: false,
+        type: "home",
+      })
+      setFormErrors({})
+    } catch (error) {
+      toast.error(error || "Failed to add address", {
+        position: "top-right",
+        autoClose: 5000,
+      })
+    }
   }
 
   const applyCoupon = () => {
-    if (couponCode.toUpperCase() === "SAVE10") {
-      setCouponDiscount(0.1)
-      toast.success("Coupon applied! 10% off your order.", {
+    const code = orderDetails.couponCode.toUpperCase()
+    let discount = 0
+    let message = ""
+
+    switch (code) {
+      case "SAVE10":
+        discount = 0.1
+        message = "10% discount applied!"
+        break
+      case "SAVE20":
+        discount = 0.2
+        message = "20% discount applied!"
+        break
+      case "WELCOME":
+        discount = 0.15
+        message = "15% welcome discount applied!"
+        break
+      case "FIRST":
+        discount = 0.25
+        message = "25% first-time buyer discount applied!"
+        break
+      default:
+        message = "Invalid coupon code"
+    }
+
+    setOrderDetails((prev) => ({ ...prev, couponDiscount: discount }))
+
+    if (discount > 0) {
+      toast.success(message, {
         position: "top-right",
         autoClose: 3000,
       })
     } else {
-      setCouponDiscount(0)
-      toast.error("Invalid coupon code.", {
+      toast.error(message, {
         position: "top-right",
         autoClose: 3000,
       })
     }
   }
 
-  const getSubtotal = () => {
-    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
+  const removeCoupon = () => {
+    setOrderDetails((prev) => ({
+      ...prev,
+      couponDiscount: 0,
+      couponCode: "",
+    }))
+    toast.info("Coupon removed", {
+      position: "top-right",
+      autoClose: 2000,
+    })
   }
 
-  const getTotal = () => {
-    const subtotal = getSubtotal()
-    const shipping = 10.0
-    const tax = subtotal * 0.08
-    const discount = subtotal * couponDiscount
-    return (subtotal + shipping + tax - discount).toFixed(2)
+  const calculateOrderSummary = () => {
+    const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
+    const shipping = subtotal > 500 ? 0 : 50 // Free shipping over ₹500
+    const tax = subtotal * 0.08 // 8% tax
+    const discount = subtotal * orderDetails.couponDiscount
+    const total = subtotal + shipping + tax - discount
+
+    return {
+      subtotal: subtotal.toFixed(2),
+      shipping: shipping.toFixed(2),
+      tax: tax.toFixed(2),
+      discount: discount.toFixed(2),
+      total: total.toFixed(2),
+    }
   }
 
-  const handleConfirmOrder = async () => {
+  const validateOrder = () => {
     if (!isLoggedIn) {
-      toast.error(
-        <div className="toast-content">
-          <p className="mb-3">Please log in to proceed with checkout.</p>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate("/login")}>
-            Go to Login
-          </button>
-        </div>,
-        {
-          position: "top-center",
-          autoClose: 5000,
-          closeOnClick: false,
-          draggable: false,
-        },
-      )
-      return
+      toast.error("Please log in to proceed with checkout.")
+      return false
+    }
+
+    if (cartItems.length === 0) {
+      toast.error("Your cart is empty.")
+      return false
     }
 
     if (!selectedAddressId) {
-      toast.error("Please select or add a shipping address.", {
-        position: "top-right",
-        autoClose: 3000,
-      })
-      return
+      toast.error("Please select or add a shipping address.")
+      return false
     }
 
     const selectedAddress = addresses.find((addr) => addr.id === selectedAddressId)
     if (!selectedAddress) {
-      toast.error("Please select a valid address.", {
-        position: "top-right",
-        autoClose: 3000,
-      })
+      toast.error("Please select a valid address.")
+      return false
+    }
+
+    return true
+  }
+
+  const handlePlaceOrder = async () => {
+    if (!validateOrder()) {
       return
     }
+
+    setIsProcessing(true)
+    const selectedAddress = addresses.find((addr) => addr.id === selectedAddressId)
+    const orderSummary = calculateOrderSummary()
 
     const orderData = {
       items: cartItems.map((item) => ({
@@ -214,29 +332,25 @@ const Checkout = () => {
         quantity: item.quantity,
         price: item.price,
         originalPrice: item.originalPrice || item.price,
-        image: item.image || "https://via.placeholder.com/100",
+        image: item.image || "/placeholder.svg?height=100&width=100&text=Product",
         color: item.color || null,
         size: item.size || null,
         carat: item.carat || null,
       })),
-      subtotal: getSubtotal().toFixed(2),
-      shipping: 10.0,
-      tax: (getSubtotal() * 0.08).toFixed(2),
-      discount: (getSubtotal() * couponDiscount).toFixed(2),
-      total: getTotal(),
+      subtotal: orderSummary.subtotal,
+      shipping: orderSummary.shipping,
+      tax: orderSummary.tax,
+      discount: orderSummary.discount,
+      total: orderSummary.total,
       shippingAddress: selectedAddress,
-      specialInstructions,
-      couponCode: couponDiscount > 0 ? couponCode : null,
-      paymentMethod: formData.paymentMethod || "creditCard",
+      specialInstructions: orderDetails.specialInstructions,
+      couponCode: orderDetails.couponDiscount > 0 ? orderDetails.couponCode : null,
+      paymentMethod: orderDetails.paymentMethod,
     }
 
     try {
-      const result = await dispatch(createOrder(orderData)).unwrap()
-
-      // Clear cart items one by one
-      cartItems.forEach((item) => {
-        dispatch(removeFromCart(item.id))
-      })
+      await dispatch(createOrder(orderData)).unwrap()
+      dispatch(clearCart())
 
       toast.success("Order placed successfully!", {
         position: "top-right",
@@ -250,264 +364,439 @@ const Checkout = () => {
         position: "top-right",
         autoClose: 5000,
       })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
+  const orderSummary = calculateOrderSummary()
+
   return (
     <div className="checkout-container">
-      <h1 className="mb-4">Checkout</h1>
-      <div className="row">
-        <div className="col-12 col-lg-8 mb-4 mb-lg-0">
-          <h5 className="mb-3">Shipping Information</h5>
-          {addresses.length === 0 ? (
-            <div className="mb-4">
-              <p className="text-muted">No addresses found. Please add a shipping address to proceed.</p>
-              <AddAddressButton onClick={handleAddAddressClick} className="mt-2" />
-            </div>
-          ) : (
-            <div className="mb-4">
-              <h6>Select Address</h6>
-              {addresses.map((address) => (
-                <div key={address.id} className="form-check mb-2">
-                  <FormCheck
-                    type="radio"
-                    id={`address-${address.id}`}
-                    name="address"
-                    checked={selectedAddressId === address.id}
-                    onChange={() => handleAddressSelect(address.id)}
-                    label={
-                      <div>
-                        <strong>{address.name}</strong> ({address.type})
-                        <p className="mb-0">
-                          {address.street}, {address.city}, {address.state} {address.zip}, {address.country}
-                        </p>
-                        <p className="mb-0">Phone: {address.phone}</p>
-                        {address.isDefault && <span className="badge bg-primary">Default</span>}
-                      </div>
-                    }
-                  />
-                </div>
-              ))}
-              <AddAddressButton onClick={handleAddAddressClick} className="mt-2" />
-            </div>
-          )}
+      <div className="container-fluid">
+        <div className="row justify-content-center">
+          <div className="col-12">
+            <h1 className="checkout-title">Checkout</h1>
 
-          <Modal show={showAddressModal} onHide={() => setShowAddressModal(false)} centered>
-            <Modal.Header closeButton>
-              <Modal.Title>Add New Address</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              <Form onSubmit={handleAddNewAddress}>
+            {/* Progress Indicator */}
+            <div className="progress-indicator mb-4">
+              <div className="progress-step active">
+                <div className="step-number">1</div>
+                <div className="step-label">Shipping</div>
+              </div>
+              <div className="progress-line"></div>
+              <div className="progress-step">
+                <div className="step-number">2</div>
+                <div className="step-label">Payment</div>
+              </div>
+              <div className="progress-line"></div>
+              <div className="progress-step">
+                <div className="step-number">3</div>
+                <div className="step-label">Confirmation</div>
+              </div>
+            </div>
+
+            <div className="row">
+              {/* Left Column - Shipping & Payment */}
+              <div className="col-lg-8 mb-4">
+                {/* Shipping Address Section */}
+                <div className="checkout-section">
+                  <div className="section-header">
+                    <h3>Shipping Address</h3>
+                    <Button variant="outline-primary" size="sm" onClick={handleAddAddress} disabled={addressLoading}>
+                      {addressLoading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Add New Address"
+                      )}
+                    </Button>
+                  </div>
+
+                  {addressLoading && addresses.length === 0 ? (
+                    <div className="text-center py-3">
+                      <div className="spinner-border spinner-border-sm text-primary" role="status">
+                        <span className="visually-hidden">Loading addresses...</span>
+                      </div>
+                      <p className="mt-2 text-muted">Loading your saved addresses...</p>
+                    </div>
+                  ) : addresses.length === 0 ? (
+                    <Alert variant="info">
+                      <div className="d-flex align-items-center">
+                        <div className="me-3">
+                          <i className="fas fa-info-circle"></i>
+                        </div>
+                        <div>
+                          <strong>No addresses found.</strong>
+                          <p className="mb-0">Please add a shipping address to proceed with your order.</p>
+                        </div>
+                      </div>
+                    </Alert>
+                  ) : (
+                    <div className="address-list">
+                      {addresses.map((address) => (
+                        <div
+                          key={address.id}
+                          className={`address-card ${selectedAddressId === address.id ? "selected" : ""}`}
+                          onClick={() => setSelectedAddressId(address.id)}
+                        >
+                          <div className="address-header">
+                            <FormCheck
+                              type="radio"
+                              id={`address-${address.id}`}
+                              name="selectedAddress"
+                              checked={selectedAddressId === address.id}
+                              onChange={() => setSelectedAddressId(address.id)}
+                              className="me-3"
+                            />
+                            <div className="address-info flex-grow-1">
+                              <div className="address-name">
+                                <strong>{address.name}</strong>
+                                <span className="address-type ms-2">({address.type})</span>
+                                {address.isDefault && <span className="badge bg-primary ms-2">Default</span>}
+                              </div>
+                              <div className="address-details mt-2">
+                                <p className="mb-1 text-muted">{address.street}</p>
+                                <p className="mb-1 text-muted">
+                                  {address.city}, {address.state} {address.zip}
+                                </p>
+                                <p className="mb-1 text-muted">{address.country}</p>
+                                <p className="mb-0 text-muted">
+                                  <i className="fas fa-phone me-1"></i>
+                                  {address.phone}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment Method Section */}
+                <div className="checkout-section">
+                  <h3>Payment Method</h3>
+                  <div className="payment-methods">
+                    {[
+                      
+                      { value: "cashOnDelivery", label: "Cash on Delivery", icon: "💰" },
+                    ].map((method) => (
+                      <div key={method.value} className="payment-method">
+                        <FormCheck
+                          type="radio"
+                          id={`payment-${method.value}`}
+                          name="paymentMethod"
+                          value={method.value}
+                          checked={orderDetails.paymentMethod === method.value}
+                          onChange={handleOrderDetailsChange}
+                          label={
+                            <div className="payment-label">
+                              <span className="payment-icon">{method.icon}</span>
+                              <span>{method.label}</span>
+                            </div>
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Special Instructions Section */}
+                <div className="checkout-section">
+                  <h3>Special Instructions</h3>
+                  <Form.Group>
+                    <Form.Control
+                      as="textarea"
+                      rows={4}
+                      name="specialInstructions"
+                      value={orderDetails.specialInstructions}
+                      onChange={handleOrderDetailsChange}
+                      placeholder="Enter any special instructions for your order..."
+                    />
+                  </Form.Group>
+                </div>
+              </div>
+
+              {/* Right Column - Order Summary */}
+              <div className="col-lg-4">
+                <div className="order-summary-sticky">
+                  <div className="checkout-section order-summary">
+                    <h3>Order Summary</h3>
+
+                    {/* Cart Items */}
+                    <div className="cart-items">
+                      {cartItems.length === 0 ? (
+                        <div className="text-center py-4">
+                          <i className="fas fa-shopping-cart fa-2x text-muted mb-3"></i>
+                          <p className="text-muted">Your cart is empty</p>
+                        </div>
+                      ) : (
+                        cartItems.map((item) => (
+                          <div key={item.id} className="cart-item">
+                            <div className="item-image">
+                              <img
+                                src={item.image || "/placeholder.svg?height=60&width=60&text=Product"}
+                                alt={item.name}
+                              />
+                            </div>
+                            <div className="item-details">
+                              <h6 className="item-name">{item.name}</h6>
+                              <div className="item-variants">
+                                {item.color && <span>Color: {item.color}</span>}
+                                {item.size && <span>Size: {item.size}</span>}
+                                {item.carat && <span>Carat: {item.carat}</span>}
+                              </div>
+                              <div className="item-price">
+                                ₹{item.price.toFixed(2)} × {item.quantity}
+                              </div>
+                            </div>
+                            <div className="item-total">₹{(item.price * item.quantity).toFixed(2)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Coupon Section */}
+                    <div className="coupon-section">
+                      <div className="coupon-input-group">
+                        <Form.Control
+                          type="text"
+                          placeholder="Enter coupon code"
+                          name="couponCode"
+                          value={orderDetails.couponCode}
+                          onChange={handleOrderDetailsChange}
+                        />
+                        <Button variant="outline-primary" onClick={applyCoupon} disabled={!orderDetails.couponCode}>
+                          Apply
+                        </Button>
+                      </div>
+                      {orderDetails.couponDiscount > 0 && (
+                        <div className="applied-coupon">
+                          <span>Coupon "{orderDetails.couponCode}" applied</span>
+                          <Button variant="link" size="sm" onClick={removeCoupon} className="p-0">
+                            Remove
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Order Totals */}
+                    <div className="order-totals">
+                      <div className="total-line">
+                        <span>Subtotal</span>
+                        <span>₹{orderSummary.subtotal}</span>
+                      </div>
+                      <div className="total-line">
+                        <span>
+                          Shipping
+                          {Number.parseFloat(orderSummary.shipping) === 0 && (
+                            <small className="text-success"> (Free)</small>
+                          )}
+                        </span>
+                        <span>₹{orderSummary.shipping}</span>
+                      </div>
+                      <div className="total-line">
+                        <span>Tax (8%)</span>
+                        <span>₹{orderSummary.tax}</span>
+                      </div>
+                      {Number.parseFloat(orderSummary.discount) > 0 && (
+                        <div className="total-line discount">
+                          <span>Discount</span>
+                          <span>-₹{orderSummary.discount}</span>
+                        </div>
+                      )}
+                      <div className="total-line total">
+                        <span>
+                          <strong>Total</strong>
+                        </span>
+                        <span>
+                          <strong>₹{orderSummary.total}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Place Order Button */}
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="place-order-btn"
+                      onClick={handlePlaceOrder}
+                      disabled={
+                        cartItems.length === 0 || orderLoading || isProcessing || !selectedAddressId || addressLoading
+                      }
+                    >
+                      {orderLoading || isProcessing ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" />
+                          Processing...
+                        </>
+                      ) : (
+                        `Place Order - ₹${orderSummary.total}`
+                      )}
+                    </Button>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Address Modal */}
+      <Modal show={showAddressModal} onHide={() => setShowAddressModal(false)} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Add New Address</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form onSubmit={handleSaveAddress}>
+            <div className="row">
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Full Name</Form.Label>
+                  <Form.Label>Full Name *</Form.Label>
                   <Form.Control
                     type="text"
                     name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
+                    value={addressForm.name}
+                    onChange={handleAddressFormChange}
+                    isInvalid={!!formErrors.name}
                     placeholder="Enter your full name"
-                    required
                   />
+                  <Form.Control.Feedback type="invalid">{formErrors.name}</Form.Control.Feedback>
                 </Form.Group>
+              </div>
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Phone</Form.Label>
+                  <Form.Label>Phone Number *</Form.Label>
                   <Form.Control
                     type="tel"
                     name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
+                    value={addressForm.phone}
+                    onChange={handleAddressFormChange}
+                    isInvalid={!!formErrors.phone}
                     placeholder="Enter your phone number"
-                    required
                   />
+                  <Form.Control.Feedback type="invalid">{formErrors.phone}</Form.Control.Feedback>
                 </Form.Group>
+              </div>
+            </div>
+
+            <Form.Group className="mb-3">
+              <Form.Label>Street Address *</Form.Label>
+              <Form.Control
+                type="text"
+                name="street"
+                value={addressForm.street}
+                onChange={handleAddressFormChange}
+                isInvalid={!!formErrors.street}
+                placeholder="Enter your street address"
+              />
+              <Form.Control.Feedback type="invalid">{formErrors.street}</Form.Control.Feedback>
+            </Form.Group>
+
+            <div className="row">
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Street Address</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="street"
-                    value={formData.street}
-                    onChange={handleInputChange}
-                    placeholder="Enter your address"
-                    required
-                  />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>City</Form.Label>
+                  <Form.Label>City *</Form.Label>
                   <Form.Control
                     type="text"
                     name="city"
-                    value={formData.city}
-                    onChange={handleInputChange}
+                    value={addressForm.city}
+                    onChange={handleAddressFormChange}
+                    isInvalid={!!formErrors.city}
                     placeholder="Enter your city"
-                    required
                   />
+                  <Form.Control.Feedback type="invalid">{formErrors.city}</Form.Control.Feedback>
                 </Form.Group>
+              </div>
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>State/Province</Form.Label>
+                  <Form.Label>State/Province *</Form.Label>
                   <Form.Control
                     type="text"
                     name="state"
-                    value={formData.state}
-                    onChange={handleInputChange}
+                    value={addressForm.state}
+                    onChange={handleAddressFormChange}
+                    isInvalid={!!formErrors.state}
                     placeholder="Enter your state"
-                    required
                   />
+                  <Form.Control.Feedback type="invalid">{formErrors.state}</Form.Control.Feedback>
                 </Form.Group>
+              </div>
+            </div>
+
+            <div className="row">
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Postal Code</Form.Label>
+                  <Form.Label>ZIP/Postal Code *</Form.Label>
                   <Form.Control
                     type="text"
                     name="zip"
-                    value={formData.zip}
-                    onChange={handleInputChange}
-                    placeholder="Enter your postal code"
-                    required
+                    value={addressForm.zip}
+                    onChange={handleAddressFormChange}
+                    isInvalid={!!formErrors.zip}
+                    placeholder="Enter ZIP code"
                   />
+                  <Form.Control.Feedback type="invalid">{formErrors.zip}</Form.Control.Feedback>
                 </Form.Group>
+              </div>
+              <div className="col-md-6">
                 <Form.Group className="mb-3">
                   <Form.Label>Country</Form.Label>
-                  <Form.Select name="country" value={formData.country} onChange={handleInputChange}>
+                  <Form.Select name="country" value={addressForm.country} onChange={handleAddressFormChange}>
                     <option value="United States">United States</option>
                     <option value="Canada">Canada</option>
                     <option value="United Kingdom">United Kingdom</option>
                     <option value="Australia">Australia</option>
+                    <option value="India">India</option>
                     <option value="Germany">Germany</option>
                     <option value="France">France</option>
                     <option value="Japan">Japan</option>
                   </Form.Select>
                 </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>Address Type</Form.Label>
-                  <Form.Select name="type" value={formData.type} onChange={handleInputChange}>
-                    <option value="home">Home</option>
-                    <option value="work">Work</option>
-                    <option value="other">Other</option>
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Check
-                    type="checkbox"
-                    label="Set as default shipping address"
-                    name="isDefault"
-                    checked={formData.isDefault}
-                    onChange={handleInputChange}
-                  />
-                </Form.Group>
-                <div className="d-flex gap-2 flex-wrap">
-                  <button type="submit" className="btn btn-primary flex-grow-1">
-                    Save Address
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary flex-grow-1"
-                    onClick={() => setShowAddressModal(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </Form>
-            </Modal.Body>
-          </Modal>
-
-          <h5 className="mb-3 mt-4">Special Instructions</h5>
-          <Form.Group className="mb-3">
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={specialInstructions}
-              onChange={(e) => setSpecialInstructions(e.target.value)}
-              placeholder="Enter any special instructions..."
-            />
-          </Form.Group>
-
-          <h5 className="mb-3 mt-4">Payment Method</h5>
-          <Form.Group className="mb-3">
-            <Form.Select name="paymentMethod" value={formData.paymentMethod} onChange={handleInputChange}>
-              <option value="creditCard">Credit Card</option>
-              <option value="debitCard">Debit Card</option>
-              <option value="paypal">PayPal</option>
-              <option value="cashOnDelivery">Cash on Delivery</option>
-            </Form.Select>
-          </Form.Group>
-        </div>
-
-        <div className="col-12 col-lg-4">
-          <h5 className="mb-3">Order Summary</h5>
-          <div className="order-summary p-3 border rounded">
-            {cartItems.length === 0 ? (
-              <p className="text-center">Your cart is empty.</p>
-            ) : (
-              <>
-                {cartItems.map((item) => (
-                  <div key={item.id} className="cart-item mb-3 d-flex align-items-start">
-                    <div className="item-image-container me-3">
-                      <img
-                        src={item.image || "/placeholder.svg?height=100&width=100&text=Product"}
-                        alt={item.name}
-                        className="item-image"
-                      />
-                    </div>
-                    <div className="item-details flex-grow-1">
-                      <p className="mb-1">
-                        <strong>{item.name}</strong>
-                      </p>
-                      <p className="mb-1 text-muted">
-                        {item.color && `Color: ${item.color} | `}
-                        {item.carat && `Carat: ${item.carat}`}
-                      </p>
-                      <p className="mb-0">
-                        ₹{item.price.toFixed(2)} x {item.quantity} = ₹{(item.price * item.quantity).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                <div className="d-flex justify-content-between mb-2">
-                  <p>Subtotal</p>
-                  <p>₹{getSubtotal().toFixed(2)}</p>
-                </div>
-                <div className="d-flex justify-content-between mb-2">
-                  <p>Shipping</p>
-                  <p>₹10.00</p>
-                </div>
-                <div className="d-flex justify-content-between mb-2">
-                  <p>Tax (8%)</p>
-                  <p>₹{(getSubtotal() * 0.08).toFixed(2)}</p>
-                </div>
-                {couponDiscount > 0 && (
-                  <div className="d-flex justify-content-between mb-2">
-                    <p>Discount ({couponCode})</p>
-                    <p>-₹{(getSubtotal() * couponDiscount).toFixed(2)}</p>
-                  </div>
-                )}
-                <div className="d-flex justify-content-between mt-3">
-                  <h6>Total</h6>
-                  <h6>₹{getTotal()}</h6>
-                </div>
-              </>
-            )}
-            <div className="mt-3">
-              <Form.Group className="d-flex gap-2 flex-wrap">
-                <Form.Control
-                  type="text"
-                  placeholder="Enter coupon code"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                  className="flex-grow-1"
-                />
-                <button className="btn btn-outline-primary" onClick={applyCoupon}>
-                  Apply
-                </button>
-              </Form.Group>
+              </div>
             </div>
-          </div>
-          <ConfirmOrderButton
-            className="w-50 mt-3"
-            onClick={handleConfirmOrder}
-            disabled={cartItems.length === 0 || loading}
-          />
-          {loading && <p className="text-center mt-2">Processing order...</p>}
-        </div>
-      </div>
+
+            <Form.Group className="mb-3">
+              <Form.Label>Address Type</Form.Label>
+              <Form.Select name="type" value={addressForm.type} onChange={handleAddressFormChange}>
+                <option value="home">Home</option>
+                <option value="work">Work</option>
+                <option value="other">Other</option>
+              </Form.Select>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                label="Set as default shipping address"
+                name="isDefault"
+                checked={addressForm.isDefault}
+                onChange={handleAddressFormChange}
+              />
+            </Form.Group>
+
+            <div className="d-flex gap-2 justify-content-end">
+              <Button variant="secondary" onClick={() => setShowAddressModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" disabled={addressLoading}>
+                {addressLoading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Address"
+                )}
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+      </Modal>
 
       <ToastContainer
         position="top-right"
@@ -523,220 +812,438 @@ const Checkout = () => {
 
       <style jsx>{`
         .checkout-container {
-          padding: 2rem 1rem;
-          font-family: 'Open Sans', sans-serif;
-          max-width: 1400px;
-          margin: 0 auto;
+          padding: 2rem 0;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          background-color: #f8f9fa;
           min-height: 100vh;
         }
-        h1 {
-          font-size: clamp(1.5rem, 4vw, 2rem);
+
+        .checkout-title {
+          font-size: 2.5rem;
           font-weight: 700;
-          color: var(--primary-text);
+          color: #212529;
+          text-align: center;
+          margin-bottom: 2rem;
+        }
+
+        /* Progress Indicator */
+        .progress-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 3rem;
+        }
+
+        .progress-step {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+        }
+
+        .step-number {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background-color: #e9ecef;
+          color: #6c757d;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          margin-bottom: 0.5rem;
+          transition: all 0.3s ease;
+        }
+
+        .progress-step.active .step-number {
+          background-color: #0d6efd;
+          color: white;
+        }
+
+        .step-label {
+          font-size: 0.875rem;
+          color: #6c757d;
+          font-weight: 500;
+        }
+
+        .progress-step.active .step-label {
+          color: #0d6efd;
+        }
+
+        .progress-line {
+          width: 100px;
+          height: 2px;
+          background-color: #e9ecef;
+          margin: 0 1rem;
+        }
+
+        /* Checkout Sections */
+        .checkout-section {
+          background: white;
+          border-radius: 12px;
+          padding: 2rem;
+          margin-bottom: 2rem;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+          border: 1px solid #e9ecef;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           margin-bottom: 1.5rem;
         }
-        h5 {
-          font-size: clamp(1rem, 2.5vw, 1.25rem);
+
+        .section-header h3 {
+          font-size: 1.5rem;
           font-weight: 600;
-          color: var(--primary-text);
+          color: #212529;
+          margin: 0;
         }
-        h6 {
-          font-size: clamp(0.9rem, 2vw, 1.1rem);
-          font-weight: 600;
-          color: var(--primary-text);
+
+        /* Address Cards */
+        .address-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
         }
-        p {
-          font-size: clamp(0.85rem, 2vw, 1rem);
-          color: var(--secondary-text);
-        }
-        .text-muted {
-          font-size: clamp(0.8rem, 1.8vw, 0.9rem);
-          color: var(--placeholder);
-        }
-        .order-summary {
-          background-color: var(--background);
-          border: 1px solid var(--dropdown-border);
+
+        .address-card {
+          border: 2px solid #e9ecef;
           border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          padding: clamp(1rem, 3vw, 1.5rem);
+          padding: 1.5rem;
+          transition: all 0.3s ease;
+          cursor: pointer;
         }
-        .cart-item {
-          border-bottom: 1px solid var(--dropdown-border);
-          padding-bottom: 0.75rem;
-          margin-bottom: 0.75rem;
+
+        .address-card:hover {
+          border-color: #0d6efd;
+          box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+        }
+
+        .address-card.selected {
+          border-color: #0d6efd;
+          background-color: #f8f9ff;
+        }
+
+        .address-header {
           display: flex;
           align-items: flex-start;
           gap: 1rem;
         }
-        .item-image-container {
-          width: clamp(60px, 15vw, 80px);
+
+        .address-info {
+          flex: 1;
+        }
+
+        .address-name {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .address-name strong {
+          font-size: 1.1rem;
+          color: #212529;
+        }
+
+        .address-type {
+          color: #6c757d;
+          font-size: 0.875rem;
+          text-transform: capitalize;
+        }
+
+        .address-details p {
+          margin: 0;
+          color: #495057;
+          font-size: 0.9rem;
+          line-height: 1.4;
+        }
+
+        /* Payment Methods */
+        .payment-methods {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+        }
+
+        .payment-method {
+          border: 2px solid #e9ecef;
+          border-radius: 8px;
+          padding: 1rem;
+          transition: all 0.3s ease;
+          cursor: pointer;
+        }
+
+        .payment-method:hover {
+          border-color: #0d6efd;
+        }
+
+        .payment-method:has(input:checked) {
+          border-color: #0d6efd;
+          background-color: #f8f9ff;
+        }
+
+        .payment-label {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          font-weight: 500;
+        }
+
+        .payment-icon {
+          font-size: 1.25rem;
+        }
+
+        /* Order Summary */
+        .order-summary-sticky {
+          position: sticky;
+          top: 2rem;
+        }
+
+        .order-summary {
+          margin-bottom: 0;
+        }
+
+        .cart-items {
+          margin-bottom: 1.5rem;
+          max-height: 300px;
+          overflow-y: auto;
+        }
+
+        .cart-item {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem 0;
+          border-bottom: 1px solid #e9ecef;
+        }
+
+        .cart-item:last-child {
+          border-bottom: none;
+        }
+
+        .item-image {
+          width: 60px;
+          height: 60px;
+          border-radius: 6px;
+          overflow: hidden;
           flex-shrink: 0;
         }
-        .item-image {
+
+        .item-image img {
           width: 100%;
-          height: auto;
+          height: 100%;
           object-fit: cover;
-          border-radius: 6px;
-          display: block;
-        }
-        .item-details p {
-          font-size: clamp(0.8rem, 1.8vw, 0.9rem);
-        }
-        .btn {
-          border-radius: 6px;
-          padding: clamp(0.5rem, 2vw, 0.75rem) clamp(1rem, 3vw, 1.5rem);
-          font-size: clamp(0.85rem, 2vw, 1rem);
-          transition: background-color 0.3s ease, transform 0.2s ease;
-          touch-action: manipulation;
-        }
-        .form-control,
-        .form-select {
-          font-size: clamp(0.85rem, 2vw, 1rem);
-          border-radius: 6px;
-          border: 1px solid var(--mobile-dropdown-border);
-          padding: clamp(0.5rem, 2vw, 0.75rem);
-        }
-        .form-check-label {
-          font-size: clamp(0.85rem, 2vw, 1rem);
-        }
-        .badge {
-          font-size: clamp(0.7rem, 1.5vw, 0.8rem);
-          padding: 0.4em 0.8em;
-        }
-        .modal-content {
-          border-radius: 12px;
-        }
-        .modal-header {
-          background: linear-gradient(135deg, var(--button-primary-color) 0%, var(--button-hover-color) 100%);
-          color: var(--background);
-          padding: clamp(1rem, 3vw, 1.25rem);
-        }
-        .modal-title {
-          font-size: clamp(1rem, 2.5vw, 1.25rem);
-        }
-        .modal-body {
-          padding: clamp(1rem, 3vw, 1.5rem);
-        }
-        .form-check {
-          margin-bottom: clamp(0.5rem, 2vw, 0.75rem);
-        }
-        .d-flex.gap-2 {
-          gap: clamp(0.5rem, 2vw, 1rem);
-        }
-        .row {
-          margin-left: 0;
-          margin-right: 0;
-        }
-        .col-12 {
-          padding-left: clamp(0.5rem, 2vw, 1rem);
-          padding-right: clamp(0.5rem, 2vw, 1rem);
         }
 
-        @media (max-width: 1200px) {
-          .checkout-container {
-            padding: 1.5rem 0.75rem;
-          }
-          .item-image-container {
-            width: clamp(50px, 12vw, 70px);
-          }
+        .item-details {
+          flex: 1;
         }
 
+        .item-name {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #212529;
+          margin-bottom: 0.25rem;
+        }
+
+        .item-variants {
+          font-size: 0.8rem;
+          color: #6c757d;
+          margin-bottom: 0.25rem;
+        }
+
+        .item-variants span:not(:last-child)::after {
+          content: " • ";
+          margin: 0 0.25rem;
+        }
+
+        .item-price {
+          font-size: 0.85rem;
+          color: #495057;
+        }
+
+        .item-total {
+          font-weight: 600;
+          color: #212529;
+        }
+
+        /* Coupon Section */
+        .coupon-section {
+          padding: 1rem 0;
+          border-top: 1px solid #e9ecef;
+          border-bottom: 1px solid #e9ecef;
+          margin-bottom: 1.5rem;
+        }
+
+        .coupon-input-group {
+          display: flex;
+          gap: 0.5rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .coupon-input-group .form-control {
+          flex: 1;
+        }
+
+        .applied-coupon {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.5rem;
+          background-color: #d1edff;
+          border-radius: 4px;
+          font-size: 0.875rem;
+          color: #0d6efd;
+        }
+
+        /* Order Totals */
+        .order-totals {
+          margin-bottom: 1.5rem;
+        }
+
+        .total-line {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 0.75rem;
+          font-size: 0.95rem;
+        }
+
+        .total-line.discount {
+          color: #198754;
+        }
+
+        .total-line.total {
+          font-size: 1.1rem;
+          font-weight: 600;
+          padding-top: 0.75rem;
+          border-top: 2px solid #e9ecef;
+          margin-top: 0.75rem;
+        }
+
+        /* Place Order Button */
+        .place-order-btn {
+          width: 100%;
+          padding: 1rem;
+          font-size: 1.1rem;
+          font-weight: 600;
+          border-radius: 8px;
+          margin-bottom: 1.5rem;
+        }
+
+        /* Trust Indicators */
+        .trust-indicators {
+          display: flex;
+          justify-content: space-around;
+          padding-top: 1rem;
+          border-top: 1px solid #e9ecef;
+        }
+
+        .trust-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.25rem;
+          font-size: 0.8rem;
+          color: #6c757d;
+          text-align: center;
+        }
+
+        .trust-icon {
+          font-size: 1.25rem;
+        }
+
+        /* Responsive Design */
         @media (max-width: 992px) {
           .checkout-container {
-            padding: 1.25rem 0.5rem;
+            padding: 1rem 0;
           }
-          .row {
+
+          .checkout-title {
+            font-size: 2rem;
+          }
+
+          .checkout-section {
+            padding: 1.5rem;
+          }
+
+          .progress-indicator {
+            margin-bottom: 2rem;
+          }
+
+          .progress-line {
+            width: 60px;
+          }
+
+          .address-header {
             flex-direction: column;
+            gap: 1rem;
           }
-          .col-12.col-lg-8,
-          .col-12.col-lg-4 {
-            width: 100%;
+
+          .payment-methods {
+            grid-template-columns: 1fr;
           }
-          .order-summary {
-            margin-top: 1.5rem;
-          }
-          .cart-item {
-            flex-direction: row;
-            align-items: flex-start;
-          }
-          .item-image-container {
-            width: clamp(50px, 10vw, 60px);
+
+          .order-summary-sticky {
+            position: static;
           }
         }
 
         @media (max-width: 768px) {
           .checkout-container {
-            padding: 1rem 0.5rem;
+            padding: 0.5rem 0;
           }
-          .cart-item {
+
+          .checkout-title {
+            font-size: 1.75rem;
+            margin-bottom: 1.5rem;
+          }
+
+          .checkout-section {
+            padding: 1rem;
+            margin-bottom: 1rem;
+          }
+
+          .section-header {
             flex-direction: column;
-            align-items: stretch;
+            align-items: flex-start;
+            gap: 1rem;
           }
-          .item-image-container {
-            width: 100%;
-            max-width: 120px;
-            margin-bottom: 0.5rem;
+
+          .address-card {
+            padding: 1rem;
           }
-          .item-image {
-            width: 100%;
-            max-width: 120px;
+
+          .trust-indicators {
+            flex-direction: column;
+            gap: 1rem;
           }
-          .btn {
-            padding: clamp(0.4rem, 1.5vw, 0.6rem) clamp(0.8rem, 2vw, 1rem);
-          }
-          .form-control,
-          .form-select {
-            padding: clamp(0.4rem, 1.5vw, 0.6rem);
-          }
-          .modal-body .btn {
-            width: 100%;
+
+          .trust-item {
+            flex-direction: row;
+            justify-content: center;
           }
         }
 
         @media (max-width: 576px) {
-          .checkout-container {
-            padding: 0.75rem 0.25rem;
+          .progress-indicator {
+            display: none;
           }
-          .cart-item {
-            gap: 0.5rem;
-          }
-          .item-image-container {
-            max-width: 100px;
-          }
-          .btn {
-            font-size: clamp(0.75rem, 1.8vw, 0.85rem);
-            padding: clamp(0.3rem, 1vw, 0.5rem) clamp(0.6rem, 1.5vw, 0.8rem);
-          }
-          .form-control,
-          .form-select {
-            font-size: clamp(0.75rem, 1.8vw, 0.85rem);
-          }
-          .form-check-label {
-            font-size: clamp(0.75rem, 1.8vw, 0.85rem);
-          }
-          .modal-body {
-            padding: clamp(0.75rem, 2vw, 1rem);
-          }
-          .modal-title {
-            font-size: clamp(0.9rem, 2vw, 1rem);
-          }
-        }
 
-        @media (min-width: 1400px) {
-          .checkout-container {
-            max-width: 1600px;
+          .cart-item {
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
           }
-          h1 {
-            font-size: 2.25rem;
+
+          .item-total {
+            align-self: flex-end;
           }
-          h5 {
-            font-size: 1.4rem;
-          }
-          h6 {
-            font-size: 1.2rem;
-          }
-          .item-image-container {
-            width: 100px;
+
+          .coupon-input-group {
+            flex-direction: column;
           }
         }
       `}</style>
