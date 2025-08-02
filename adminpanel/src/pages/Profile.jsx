@@ -320,14 +320,6 @@ const Profile = () => {
               </div>
 
               <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">Department</label>
-                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                  <User size={14} className="text-gray-400" />
-                  <span className="text-sm sm:text-base text-gray-700">{formData.department}</span>
-                </div>
-              </div>
-
-              <div>
                 <label className="block text-gray-700 text-sm font-medium mb-2">Join Date</label>
                 <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
                   <Calendar size={14} className="text-gray-400" />

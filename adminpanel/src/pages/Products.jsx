@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Search, Plus, Edit, Trash2, Eye, Download, Upload } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Search, Plus, Edit, Trash2, Eye, Download, Upload } from 'lucide-react'
 import { useToast } from "../context/ToastContext"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
@@ -80,6 +80,14 @@ const Products = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [cacheBuster, setCacheBuster] = useState(Date.now())
+  
+  // Import/Export states
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importData, setImportData] = useState("")
+  const [importErrors, setImportErrors] = useState([])
+  const [importSuccess, setImportSuccess] = useState(false)
+  const [validatedProducts, setValidatedProducts] = useState([])
+  const fileInputRef = useRef(null)
 
   const { addToast } = useToast()
   const navigate = useNavigate()
@@ -221,6 +229,222 @@ const Products = () => {
     fetchCategories()
   }, [fetchProducts, fetchCategories])
 
+  // Import JSON functionality
+  const handleImportJSON = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.type !== "application/json") {
+      addToast("Please select a valid JSON file", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target.result);
+        setImportData(JSON.stringify(jsonData, null, 2));
+        validateImportData(JSON.stringify(jsonData, null, 2));
+        setShowImportModal(true);
+      } catch (error) {
+        console.error("Error parsing JSON:", error);
+        addToast("Invalid JSON file format", "error");
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset file input
+    event.target.value = '';
+  };
+
+  const validateImportData = (jsonData) => {
+    try {
+      const data = JSON.parse(jsonData);
+      const errors = [];
+      const products = [];
+
+      // Handle both single product and array of products
+      const productsArray = Array.isArray(data.products) ? data.products : 
+                           Array.isArray(data) ? data : [data];
+
+      productsArray.forEach((product, index) => {
+        const productErrors = [];
+
+        // Required field validation
+        if (!product.name) productErrors.push(`Product ${index + 1}: Name is required`);
+        if (!product.categoryId) productErrors.push(`Product ${index + 1}: Category ID is required`);
+        if (!product.variants || !Array.isArray(product.variants) || product.variants.length === 0) {
+          productErrors.push(`Product ${index + 1}: At least one variant is required`);
+        }
+
+        // Validate variants
+        if (product.variants && Array.isArray(product.variants)) {
+          product.variants.forEach((variant, vIndex) => {
+            if (!variant.color) productErrors.push(`Product ${index + 1}, Variant ${vIndex + 1}: Color is required`);
+            if (!variant.size) productErrors.push(`Product ${index + 1}, Variant ${vIndex + 1}: Size is required`);
+            if (!variant.type) productErrors.push(`Product ${index + 1}, Variant ${vIndex + 1}: Type is required`);
+            if (!variant.price || variant.price <= 0)
+              productErrors.push(`Product ${index + 1}, Variant ${vIndex + 1}: Valid price is required`);
+            if (variant.quantity === undefined || variant.quantity < 0)
+              productErrors.push(`Product ${index + 1}, Variant ${vIndex + 1}: Valid quantity is required`);
+          });
+        }
+
+        // Check if category exists
+        if (product.categoryId && !categories.find((c) => c.id === product.categoryId)) {
+          productErrors.push(`Product ${index + 1}: Category ID ${product.categoryId} does not exist`);
+        }
+
+        errors.push(...productErrors);
+
+        if (productErrors.length === 0) {
+          products.push({
+            ...product,
+            id: Date.now() + index,
+            slug: product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+            tags: Array.isArray(product.tags) ? product.tags : [],
+            images: Array.isArray(product.images) ? product.images : [],
+            stock: product.variants ? product.variants.reduce((sum, v) => sum + (v.quantity || 0), 0) : 0,
+            lowStockThreshold: product.lowStockThreshold || 10,
+            availability: product.availability || "in_stock",
+            status: product.status || "active",
+            featured: product.featured || false,
+            rating: product.rating || 0,
+            reviewCount: product.reviewCount || 0,
+            viewCount: product.viewCount || 0,
+            salesCount: product.salesCount || 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            cat_slug: categories.find((c) => c.id === product.categoryId)?.cat_slug || "",
+            specifications: product.specifications || [{ Fabric: "" }],
+          });
+        }
+      });
+
+      setImportErrors(errors);
+      setValidatedProducts(products);
+      setImportSuccess(errors.length === 0 && products.length > 0);
+    } catch (error) {
+      setImportErrors(["Invalid JSON format. Please check your file."]);
+      setValidatedProducts([]);
+      setImportSuccess(false);
+    }
+  };
+
+  const handleImportProducts = async () => {
+    if (validatedProducts.length === 0) return;
+
+    try {
+      setLoading(true);
+      const importPromises = validatedProducts.map(async (product) => {
+        const formData = new FormData();
+        
+        // Add all product fields
+        Object.entries(product).forEach(([key, value]) => {
+          if (key !== "images") {
+            if (key === "variants" || key === "specifications") {
+              formData.append(key, JSON.stringify(value));
+            } else {
+              formData.append(key, value);
+            }
+          }
+        });
+
+        // Handle images if they are URLs
+        if (product.images && Array.isArray(product.images)) {
+          formData.append("existingImages", JSON.stringify(product.images));
+        }
+
+        return axios.post(`${API_BASE_URL}/products`, formData, {
+          headers: { 
+            "Content-Type": "multipart/form-data",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          }
+        });
+      });
+
+      await Promise.all(importPromises);
+      addToast(`Successfully imported ${validatedProducts.length} products`, "success");
+      setShowImportModal(false);
+      setCacheBuster(Date.now());
+      
+      // Reset import state
+      setImportData("");
+      setImportErrors([]);
+      setImportSuccess(false);
+      setValidatedProducts([]);
+    } catch (error) {
+      console.error("Error importing products:", error);
+      addToast("Failed to import some products", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Export JSON functionality
+  const handleExportJSON = () => {
+    if (products.length === 0) {
+      addToast("No products to export", "error");
+      return;
+    }
+
+    const exportData = {
+      products: products.map((product) => ({
+        name: product.name,
+        description: product.description,
+        shortDescription: product.description?.substring(0, 500) || "",
+        slug: product.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, ''),
+        discount: 0,
+        categoryId: product.categoryId,
+        cat_slug: product.cat_slug,
+        brand: product.brand,
+        tags: Array.isArray(product.tags) ? product.tags : [],
+        images: product.images || [],
+        material: product.material,
+        style: "Casual",
+        weight: null,
+        dimensions: null,
+        stock: product.variants.reduce((total, variant) => total + (variant.quantity || 0), 0),
+        lowStockThreshold: 10,
+        availability: product.availability,
+        status: product.status,
+        featured: false,
+        rating: 0.00,
+        reviewCount: 0,
+        seoTitle: product.seoTitle,
+        seoDescription: product.seoDescription,
+        metaKeywords: product.metaKeywords,
+        variants: product.variants.map(variant => ({
+          color: variant.color,
+          size: variant.size,
+          type: variant.type,
+          price: variant.price,
+          originalPrice: variant.originalPrice,
+          quantity: variant.quantity
+        })),
+        specifications: product.specifications.map(spec => ({
+          Fabric: spec.fabric || spec.Fabric || ""
+        })),
+        shippingInfo: null,
+        warranty: null,
+        returnPolicy: null
+      }))
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `products-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    addToast(`Successfully exported ${products.length} products`, "success");
+  };
+
   const handleDeleteProduct = async () => {
     if (!selectedProduct) return
     try {
@@ -306,12 +530,30 @@ const Products = () => {
           <p className="text-gray-600 mt-1 text-sm">Manage your product inventory and listings</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm">
-            <Upload size={18} /> <span className="hidden sm:inline">Import</span>
+          {/* Import JSON Button */}
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleImportJSON}
+            ref={fileInputRef}
+            className="hidden"
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          >
+            <Upload size={18} /> <span className="hidden sm:inline">Import JSON</span>
+          </button>
+          {/* Export JSON Button */}
+          <button
+            onClick={handleExportJSON}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          >
+            <Download size={18} /> <span className="hidden sm:inline">Export JSON</span>
           </button>
           <button
             onClick={handleAddProduct}
-            className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-gradient-to-r from-[#C77096] to-[#A83E68] text-white rounded-lg hover:opacity-90 text-sm"
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C77096] to-[#A83E68] text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
           >
             <Plus size={18} /> <span className="hidden sm:inline">Add Product</span>
           </button>
@@ -370,9 +612,6 @@ const Products = () => {
               <option value="createdAt-desc">Newest First</option>
               <option value="createdAt-asc">Oldest First</option>
             </select>
-            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm">
-              <Download size={16} /> <span className="hidden sm:inline">Export</span>
-            </button>
           </div>
         </div>
       </div>
@@ -645,6 +884,107 @@ const Products = () => {
           </div>
         </div>
       )}
+
+      {/* Import Modal */}
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => {
+          setShowImportModal(false);
+          setImportData("");
+          setImportErrors([]);
+          setImportSuccess(false);
+          setValidatedProducts([]);
+        }}
+        title="Import Products from JSON"
+        size="xl"
+      >
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">JSON Data:</label>
+            <textarea
+              value={importData}
+              onChange={(e) => {
+                setImportData(e.target.value);
+                if (e.target.value.trim()) {
+                  validateImportData(e.target.value);
+                } else {
+                  setImportErrors([]);
+                  setValidatedProducts([]);
+                  setImportSuccess(false);
+                }
+              }}
+              placeholder="Paste your JSON data here..."
+              rows={10}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            />
+          </div>
+
+          {/* Validation Results */}
+          {importErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <h4 className="text-red-800 font-medium mb-2">Import Validation Errors:</h4>
+              <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                {importErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {importSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-green-800">✅ Validation successful! {validatedProducts.length} product(s) ready to import.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Preview validated products */}
+          {validatedProducts.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="font-medium">Products to be imported:</h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {validatedProducts.map((product, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{product.name}</p>
+                      <p className="text-sm text-gray-500">
+                        {product.variants.length} variant(s) • {product.brand || "No brand"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded">{product.status}</span>
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded">{product.availability.replace("_", " ")}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowImportModal(false);
+                setImportData("");
+                setImportErrors([]);
+                setImportSuccess(false);
+                setValidatedProducts([]);
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleImportProducts}
+              disabled={!importSuccess || validatedProducts.length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Import {validatedProducts.length} Products
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* View Product Modal */}
       {showViewModal && selectedProduct && (

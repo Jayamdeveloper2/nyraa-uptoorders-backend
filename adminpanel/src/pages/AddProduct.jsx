@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ImageIcon, X, Pencil, Trash2, ArrowLeft, Save, XCircle, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, ImageIcon, X, Pencil, Trash2, ArrowLeft, Save, XCircle, ChevronRight, Upload, Download } from 'lucide-react';
 import { useToast } from "../context/ToastContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -37,6 +37,7 @@ const AddProduct = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isEdit = new URLSearchParams(location.search).get("edit");
+  const fileInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -108,6 +109,137 @@ const AddProduct = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Import JSON functionality
+  const handleImportJSON = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.type !== "application/json") {
+      addToast("Please select a valid JSON file", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target.result);
+        
+        if (!jsonData.products || !Array.isArray(jsonData.products) || jsonData.products.length === 0) {
+          addToast("Invalid JSON format. Expected 'products' array", "error");
+          return;
+        }
+
+        const product = jsonData.products[0]; // Import first product
+        
+        // Map JSON data to form structure
+        setFormData({
+          name: product.name || "",
+          description: product.description || "",
+          categoryId: product.categoryId?.toString() || "",
+          cat_slug: product.cat_slug || "",
+          variants: product.variants && Array.isArray(product.variants) && product.variants.length > 0 
+            ? product.variants.map(variant => ({
+                color: variant.color || "",
+                size: variant.size || "",
+                type: variant.type || "",
+                price: variant.price?.toString() || "",
+                originalPrice: variant.originalPrice?.toString() || "",
+                quantity: variant.quantity?.toString() || ""
+              }))
+            : [{ color: "", size: "", type: "", price: "", originalPrice: "", quantity: "" }],
+          specifications: product.specifications && Array.isArray(product.specifications) && product.specifications.length > 0 
+            ? product.specifications.map(spec => ({
+                name: "Fabric",
+                value: spec.Fabric || ""
+              }))
+            : [{ name: "Fabric", value: "" }],
+          images: product.images || [],
+          seoTitle: product.seoTitle || "",
+          metaKeywords: product.metaKeywords || "",
+          seoDescription: product.seoDescription || "",
+          status: product.status || "active",
+          availability: product.availability || "in_stock",
+          brand: product.brand || "",
+          material: product.material || "",
+          tags: Array.isArray(product.tags) ? product.tags : []
+        });
+
+        // Set image previews if images are URLs
+        if (product.images && Array.isArray(product.images)) {
+          setImagePreviews(product.images);
+        }
+
+        addToast("Product data imported successfully", "success");
+      } catch (error) {
+        console.error("Error parsing JSON:", error);
+        addToast("Invalid JSON file format", "error");
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset file input
+    event.target.value = '';
+  };
+
+  // Export JSON functionality
+  const handleExportJSON = () => {
+    const exportData = {
+      products: [{
+        name: formData.name,
+        description: formData.description,
+        shortDescription: formData.description?.substring(0, 500) || "",
+        slug: formData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, ''),
+        discount: 0,
+        categoryId: parseInt(formData.categoryId) || null,
+        cat_slug: formData.cat_slug,
+        brand: formData.brand,
+        tags: formData.tags,
+        images: formData.images,
+        material: formData.material,
+        style: "Casual",
+        weight: null,
+        dimensions: null,
+        stock: formData.variants.reduce((total, variant) => total + (parseInt(variant.quantity) || 0), 0),
+        lowStockThreshold: 10,
+        availability: formData.availability,
+        status: formData.status,
+        featured: false,
+        rating: 0.00,
+        reviewCount: 0,
+        seoTitle: formData.seoTitle,
+        seoDescription: formData.seoDescription,
+        metaKeywords: formData.metaKeywords,
+        variants: formData.variants.map(variant => ({
+          color: variant.color,
+          size: variant.size,
+          type: variant.type,
+          price: parseFloat(variant.price) || 0,
+          originalPrice: parseFloat(variant.originalPrice) || 0,
+          quantity: parseInt(variant.quantity) || 0
+        })),
+        specifications: formData.specifications.map(spec => ({
+          Fabric: spec.value
+        })),
+        shippingInfo: null,
+        warranty: null,
+        returnPolicy: null
+      }]
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `product-${formData.name.toLowerCase().replace(/\s+/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    addToast("Product data exported successfully", "success");
+  };
 
   const handleInputChange = (e, index, type) => {
     const { name, value } = e.target;
@@ -382,13 +514,37 @@ const AddProduct = () => {
                 {isEdit ? "Edit Product" : "Add New Product"}
               </h1>
             </div>
-            <button
-              onClick={() => navigate("/products")}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-            >
-              <ArrowLeft size={16} />
-              <span>Back to Products</span>
-            </button>
+            <div className="flex gap-3">
+              {/* Import/Export Buttons */}
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                ref={fileInputRef}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <Upload size={16} />
+                <span>Import JSON</span>
+              </button>
+              <button
+                onClick={handleExportJSON}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <Download size={16} />
+                <span>Export JSON</span>
+              </button>
+              <button
+                onClick={() => navigate("/products")}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Products</span>
+              </button>
+            </div>
           </div>
           <p className="text-slate-600 hidden sm:block text-sm sm:text-base">
             {isEdit ? "Update your product information" : "Create a new product listing"}
@@ -890,7 +1046,7 @@ const AddProduct = () => {
                   <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
                     <div className="relative max-w-4xl w-full">
                       <img
-                        src={imagePreviews[selectedImageIndex]}
+                        src={imagePreviews[selectedImageIndex] || "/placeholder.svg"}
                         alt="Full view"
                         className="w-full h-auto rounded-xl"
                       />
