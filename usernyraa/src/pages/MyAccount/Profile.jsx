@@ -27,6 +27,7 @@ const Profile = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -51,7 +52,6 @@ const Profile = () => {
         })
         localStorage.setItem("userData", JSON.stringify(response.data))
 
-        // Check if profile completion is required
         const completeParam = searchParams.get("complete")
         const profileIncomplete = !response.data.name || !response.data.phone || completeParam === "true"
         setIsProfileIncomplete(profileIncomplete)
@@ -89,13 +89,11 @@ const Profile = () => {
   const handleCancel = (field) => {
     if (isProfileIncomplete) return
     setEditing({ ...editing, [field]: false })
-    setTempData({ ...tempData, [field]: user[field] || "" })
-  }
+setTempData({ ...tempData, [field]: user[field] || "" })  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
     if (name === "phone") {
-      // Only allow numbers and limit to 15 digits
       const phoneValue = value.replace(/\D/g, "").slice(0, 15)
       setTempData({ ...tempData, [name]: phoneValue })
     } else {
@@ -112,7 +110,6 @@ const Profile = () => {
         return
       }
 
-      // Phone number validation
       if (field === "phone") {
         if (tempData.phone.length < 10) {
           toast.error("Phone number must be at least 10 digits", {
@@ -189,7 +186,6 @@ const Profile = () => {
         autoClose: 3000,
       })
 
-      // Check if there's a redirect destination
       const redirectPath = sessionStorage.getItem("redirectAfterProfile")
       if (redirectPath) {
         sessionStorage.removeItem("redirectAfterProfile")
@@ -197,7 +193,6 @@ const Profile = () => {
           navigate(redirectPath)
         }, 2000)
       } else {
-        // Default redirect to home
         setTimeout(() => {
           navigate("/")
         }, 2000)
@@ -217,13 +212,10 @@ const Profile = () => {
 
   const handleConfirmAction = () => {
     if (modalConfig.actionType === "signout") {
-      // Clear all auth data
       localStorage.removeItem("token")
       localStorage.removeItem("userData")
       localStorage.removeItem("isLoggedIn")
       sessionStorage.clear()
-
-      // Force page reload and navigation
       window.location.href = "/nyraa/login"
     }
     setShowConfirmModal(false)
@@ -235,8 +227,33 @@ const Profile = () => {
 
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0]
-    if (!file) return
+    if (!file) {
+      toast.error("No file selected", {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
 
+    // Validate file type and size
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif"]
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Only images (jpeg, jpg, png, gif, webp, avif) are allowed", {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
+    if (file.size > maxSize) {
+      toast.error("File size must be less than 5MB", {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
+
+    setIsUploading(true)
     const formData = new FormData()
     formData.append("avatar", file)
 
@@ -248,8 +265,14 @@ const Profile = () => {
           "Content-Type": "multipart/form-data",
         },
       })
-      setUser(response.data.user)
-      localStorage.setItem("userData", JSON.stringify(response.data.user))
+
+      // Fetch updated profile to ensure consistency
+      const profileResponse = await axios.get("http://localhost:5000/api/auth/profile", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      setUser(profileResponse.data)
+      localStorage.setItem("userData", JSON.stringify(profileResponse.data))
       toast.success("Avatar updated successfully!", {
         position: "top-right",
         autoClose: 3000,
@@ -259,6 +282,8 @@ const Profile = () => {
         position: "top-right",
         autoClose: 3000,
       })
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -302,7 +327,7 @@ const Profile = () => {
             <div className="profile-avatar">
               {user.avatar ? (
                 <img
-                  src={user.avatar || "/placeholder.svg"}
+                  src={`${user.avatar}?t=${new Date().getTime()}`}
                   alt="User Avatar"
                   className="avatar-img"
                   onError={handleAvatarError}
@@ -320,13 +345,14 @@ const Profile = () => {
             <div className="avatar-upload">
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/avif"
                 id="avatarUpload"
                 onChange={handleAvatarUpload}
                 style={{ display: "none" }}
+                disabled={isUploading}
               />
-              <label htmlFor="avatarUpload" className="edit-avatar-btn">
-                Change Photo
+              <label htmlFor="avatarUpload" className={`edit-avatar-btn ${isUploading ? "disabled" : ""}`}>
+                {isUploading ? "Uploading..." : "Change Photo"}
               </label>
             </div>
           )}
@@ -566,8 +592,13 @@ const Profile = () => {
           transition: all 0.2s ease;
         }
 
-        .edit-avatar-btn:hover {
+        .edit-avatar-btn:hover:not(.disabled) {
           background: rgba(255, 255, 255, 0.3);
+        }
+
+        .edit-avatar-btn.disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .profile-body {
