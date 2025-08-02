@@ -24,7 +24,7 @@ const generateSlug = (name) => {
 };
 
 const ProductDetail = () => {
-  const { slug } = useParams(); // Changed from id to slug
+  const { slug } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const cartItems = useSelector((state) => state.cart.items) || [];
@@ -53,7 +53,6 @@ const ProductDetail = () => {
       try {
         setLoading(true);
         setError(null);
-        // Use slug instead of id in the API call
         const response = await fetch(`http://localhost:5000/api/products/${slug}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch product: ${response.statusText}`);
@@ -66,14 +65,13 @@ const ProductDetail = () => {
 
         const variants = Array.isArray(item.variants) ? item.variants : [];
         const firstVariant = variants[0] || {};
-        // Handle specifications as an array
         const specifications = Array.isArray(item.specifications) && item.specifications.length > 0 
           ? item.specifications[0] 
           : {};
 
         const transformedProduct = {
           id: item.id?.toString() || item.slug,
-          slug: item.slug || generateSlug(item.name), // Add slug to product
+          slug: item.slug || generateSlug(item.name),
           name: item.name || "Unnamed Product",
           price: firstVariant.price || item.price || 0,
           originalPrice: firstVariant.originalPrice || item.originalPrice || firstVariant.price || 0,
@@ -94,6 +92,7 @@ const ProductDetail = () => {
             .join(", ") || specifications.Color || "N/A",
           images: item.images && Array.isArray(item.images) ? item.images : [item.image || "/placeholder.svg"],
           highResImages: item.highResImages && Array.isArray(item.highResImages) ? item.highResImages : (item.images || [item.image || "/placeholder.svg"]),
+          image: item.image || (item.images && item.images[0]) || "/placeholder.svg", // Added to ensure cart compatibility
           availability: item.availability || "In Stock",
           description: item.description || "No description available",
           about: item.seoDescription || "No additional information available",
@@ -118,7 +117,7 @@ const ProductDetail = () => {
     };
     fetchProduct();
     window.scrollTo(0, 0);
-  }, [slug]); // Changed dependency from id to slug
+  }, [slug]);
 
   useEffect(() => {
     if (thumbnailsContainerRef.current) {
@@ -281,7 +280,7 @@ const ProductDetail = () => {
           { label: "Home", link: "/home" },
           {
             label: capitalizeCategory(product.category),
-            link: `/collections/${product.categorySlug}`, // Use category slug
+            link: `/collections/${product.categorySlug}`,
           },
           { label: product.name },
         ]}
@@ -481,7 +480,7 @@ const ProductDetail = () => {
                   />
                   <PurchaseNowTwoButton
                     label="Buy Now"
-                    productId={product.slug} // Use slug instead of id
+                    productId={product.slug}
                     onClick={handleBuyNow}
                     showIcon={true}
                   />
@@ -516,7 +515,6 @@ const ProductDetail = () => {
                     {activeTab === "about" && (
                       <div className="about-tab">
                         <p className="product-detailed-description">{product.about}</p>
-                       
                       </div>
                     )}
                   </div>

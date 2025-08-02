@@ -18,7 +18,7 @@ const InvoiceDetail = () => {
     if (foundOrder) {
       setOrder(foundOrder);
     } else {
-      navigate("/nyraa/account/invoices");
+      navigate("/account/invoices");
     }
   }, [invoiceId, navigate]);
 
