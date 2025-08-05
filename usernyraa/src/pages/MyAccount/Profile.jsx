@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { MailIcon, PhoneIcon, UserIcon, CalendarIcon } from "../../components/ui/Myaccounticons/MyAccountIcons"
@@ -45,23 +47,25 @@ const Profile = () => {
           headers: { Authorization: `Bearer ${token}` },
         })
 
-        setUser(response.data)
-        setTempData({
-          name: response.data.name || "",
-          phone: response.data.phone || "",
-        })
-        localStorage.setItem("userData", JSON.stringify(response.data))
-
-        const completeParam = searchParams.get("complete")
-        const profileIncomplete = !response.data.name || !response.data.phone || completeParam === "true"
-        setIsProfileIncomplete(profileIncomplete)
-
-        if (profileIncomplete) {
-          setEditing({ name: true, phone: true })
-          toast.info("Please complete your profile to continue", {
-            position: "top-center",
-            autoClose: 5000,
+        if (response.data.success) {
+          setUser(response.data.user)
+          setTempData({
+            name: response.data.user.name || "",
+            phone: response.data.user.phone || "",
           })
+          localStorage.setItem("userData", JSON.stringify(response.data.user))
+
+          const completeParam = searchParams.get("complete")
+          const profileIncomplete = !response.data.user.profileComplete || completeParam === "true"
+          setIsProfileIncomplete(profileIncomplete)
+
+          if (profileIncomplete) {
+            setEditing({ name: true, phone: true })
+            toast.info("Please complete your profile to continue", {
+              position: "top-center",
+              autoClose: 5000,
+            })
+          }
         }
 
         setIsLoading(false)
@@ -89,7 +93,8 @@ const Profile = () => {
   const handleCancel = (field) => {
     if (isProfileIncomplete) return
     setEditing({ ...editing, [field]: false })
-setTempData({ ...tempData, [field]: user[field] || "" })  }
+    setTempData({ ...tempData, [field]: user[field] || "" })
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -130,14 +135,16 @@ setTempData({ ...tempData, [field]: user[field] || "" })  }
         },
       )
 
-      setUser(response.data)
-      localStorage.setItem("userData", JSON.stringify(response.data))
-      setEditing({ ...editing, [field]: false })
+      if (response.data.success) {
+        setUser(response.data.user)
+        localStorage.setItem("userData", JSON.stringify(response.data.user))
+        setEditing({ ...editing, [field]: false })
 
-      toast.success("Profile updated successfully!", {
-        position: "top-right",
-        autoClose: 3000,
-      })
+        toast.success("Profile updated successfully!", {
+          position: "top-right",
+          autoClose: 3000,
+        })
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Error updating profile", {
         position: "top-right",
@@ -176,26 +183,28 @@ setTempData({ ...tempData, [field]: user[field] || "" })  }
         },
       )
 
-      setUser(response.data)
-      localStorage.setItem("userData", JSON.stringify(response.data))
-      setEditing({ name: false, phone: false })
-      setIsProfileIncomplete(false)
+      if (response.data.success) {
+        setUser(response.data.user)
+        localStorage.setItem("userData", JSON.stringify(response.data.user))
+        setEditing({ name: false, phone: false })
+        setIsProfileIncomplete(false)
 
-      toast.success("Profile completed successfully! You can now access all features.", {
-        position: "top-center",
-        autoClose: 3000,
-      })
+        toast.success("Profile completed successfully! You can now access all features.", {
+          position: "top-center",
+          autoClose: 3000,
+        })
 
-      const redirectPath = sessionStorage.getItem("redirectAfterProfile")
-      if (redirectPath) {
-        sessionStorage.removeItem("redirectAfterProfile")
-        setTimeout(() => {
-          navigate(redirectPath)
-        }, 2000)
-      } else {
-        setTimeout(() => {
-          navigate("/")
-        }, 2000)
+        const redirectPath = sessionStorage.getItem("redirectAfterProfile")
+        if (redirectPath) {
+          sessionStorage.removeItem("redirectAfterProfile")
+          setTimeout(() => {
+            navigate(redirectPath)
+          }, 2000)
+        } else {
+          setTimeout(() => {
+            navigate("/")
+          }, 2000)
+        }
       }
     } catch (error) {
       toast.error(error.response?.data?.message || "Error completing profile", {
@@ -266,17 +275,21 @@ setTempData({ ...tempData, [field]: user[field] || "" })  }
         },
       })
 
-      // Fetch updated profile to ensure consistency
-      const profileResponse = await axios.get("http://localhost:5000/api/auth/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (response.data.success) {
+        // Fetch updated profile to ensure consistency
+        const profileResponse = await axios.get("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
 
-      setUser(profileResponse.data)
-      localStorage.setItem("userData", JSON.stringify(profileResponse.data))
-      toast.success("Avatar updated successfully!", {
-        position: "top-right",
-        autoClose: 3000,
-      })
+        if (profileResponse.data.success) {
+          setUser(profileResponse.data.user)
+          localStorage.setItem("userData", JSON.stringify(profileResponse.data.user))
+          toast.success("Avatar updated successfully!", {
+            position: "top-right",
+            autoClose: 3000,
+          })
+        }
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Error uploading avatar", {
         position: "top-right",

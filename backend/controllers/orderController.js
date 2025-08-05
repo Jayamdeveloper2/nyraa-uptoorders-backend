@@ -87,17 +87,7 @@ exports.createOrder = async (req, res) => {
     // Handle missing products
     if (missingProducts.length > 0) {
       console.warn(`Products not found in database:`, missingProducts)
-
-      // For development/demo: Allow order creation even with missing products
-      // In production, you would want to return an error instead
       console.log(`Proceeding with order despite missing products: ${missingProducts.map((p) => p.id).join(", ")}`)
-
-      // Uncomment the lines below to enforce strict product validation:
-      // return res.status(400).json({
-      //   success: false,
-      //   message: `The following products were not found: ${missingProducts.map((p) => p.name).join(", ")}. Please refresh your cart.`,
-      //   missingProducts,
-      // })
     }
 
     // Handle stock issues
@@ -126,7 +116,7 @@ exports.createOrder = async (req, res) => {
         total: Number.parseFloat(total) || 0,
         paymentMethod: paymentMethod || "creditCard",
         paymentStatus: "pending",
-        shippingAddress,
+        shippingAddress: typeof shippingAddress === "string" ? shippingAddress : JSON.stringify(shippingAddress),
         specialInstructions,
         couponCode,
         orderDate: new Date(),
@@ -148,11 +138,11 @@ exports.createOrder = async (req, res) => {
           quantity: item.quantity,
           price: Number.parseFloat(item.price),
           originalPrice: Number.parseFloat(item.originalPrice) || Number.parseFloat(item.price),
-          variant: {
+          variant: JSON.stringify({
             color: item.color,
             size: item.size,
             carat: item.carat,
-          },
+          }),
         },
         { transaction },
       )
@@ -229,15 +219,29 @@ exports.createOrder = async (req, res) => {
   }
 }
 
-// Get user orders
+// Get user orders (Updated to support admin access)
 exports.getUserOrders = async (req, res) => {
   try {
-    const userId = req.user.id
-    const { page = 1, limit = 10, status } = req.query
+    const { page = 1, limit = 10, status, startDate, endDate } = req.query
 
-    const whereClause = { userId }
-    if (status) {
+    // Build where clause based on user type
+    const whereClause = {}
+
+    // If it's a regular user, only show their orders
+    if (req.userType === "user") {
+      whereClause.userId = req.user.id
+    }
+
+    // Add status filter if provided
+    if (status && status !== "all") {
       whereClause.status = status
+    }
+
+    // Add date filter if provided
+    if (startDate && endDate) {
+      whereClause.orderDate = {
+        [Op.between]: [new Date(startDate), new Date(endDate)],
+      }
     }
 
     const orders = await Order.findAndCountAll({
@@ -254,6 +258,18 @@ exports.getUserOrders = async (req, res) => {
               required: false, // LEFT JOIN to handle missing products
             },
           ],
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone"],
+          required: true,
+        },
+        {
+          model: OrderStatusHistory,
+          as: "statusHistory",
+          order: [["changedAt", "ASC"]],
+          required: false,
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -272,7 +288,7 @@ exports.getUserOrders = async (req, res) => {
       },
     })
   } catch (error) {
-    console.error("Error fetching user orders:", error)
+    console.error("Error fetching orders:", error)
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders",
@@ -281,17 +297,21 @@ exports.getUserOrders = async (req, res) => {
   }
 }
 
-// Get single order
+// Get single order (Updated to support admin access)
 exports.getOrder = async (req, res) => {
   try {
     const { id } = req.params
-    const userId = req.user.id
+
+    // Build where clause based on user type
+    const whereClause = { id }
+
+    // If it's a regular user, only allow access to their own orders
+    if (req.userType === "user") {
+      whereClause.userId = req.user.id
+    }
 
     const order = await Order.findOne({
-      where: {
-        id,
-        userId, // Ensure user can only access their own orders
-      },
+      where: whereClause,
       include: [
         {
           model: OrderItem,
@@ -309,6 +329,11 @@ exports.getOrder = async (req, res) => {
           model: OrderStatusHistory,
           as: "statusHistory",
           order: [["changedAt", "ASC"]],
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone"],
         },
       ],
     })
@@ -341,7 +366,7 @@ exports.updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params
     const { status, comment, trackingNumber } = req.body
-    const changedBy = req.userType === "admin" ? req.user.username : req.user.email
+    const changedBy = req.userType === "admin" ? req.user.username || req.user.name : req.user.email
 
     const order = await Order.findByPk(id)
     if (!order) {
@@ -368,7 +393,7 @@ exports.updateOrderStatus = async (req, res) => {
       {
         orderId: order.id,
         status,
-        comment,
+        comment: comment || `Status updated to ${status}`,
         changedBy,
         changedAt: new Date(),
       },
@@ -377,10 +402,30 @@ exports.updateOrderStatus = async (req, res) => {
 
     await transaction.commit()
 
+    // Fetch updated order with all relations
+    const updatedOrder = await Order.findByPk(order.id, {
+      include: [
+        {
+          model: OrderItem,
+          as: "items",
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone"],
+        },
+        {
+          model: OrderStatusHistory,
+          as: "statusHistory",
+          order: [["changedAt", "ASC"]],
+        },
+      ],
+    })
+
     res.json({
       success: true,
       message: "Order status updated successfully",
-      order,
+      order: updatedOrder,
     })
   } catch (error) {
     await transaction.rollback()

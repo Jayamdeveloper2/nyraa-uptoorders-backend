@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { User, Mail, LogIn, AlertCircle, CheckCircle } from "lucide-react"
@@ -96,7 +98,7 @@ const Login = () => {
         localStorage.setItem("userData", JSON.stringify(response.data.user))
         localStorage.setItem("isLoggedIn", "true")
 
-        if (!response.data.user.name || !response.data.user.phone) {
+        if (!response.data.user.profileComplete) {
           setShowProfileForm(true)
           setSuccess("OTP verified! Please complete your profile.")
         } else {
@@ -139,12 +141,14 @@ const Login = () => {
         },
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       )
 
-      localStorage.setItem("userData", JSON.stringify(response.data))
-      setSuccess("Profile completed successfully! Redirecting...")
-      setTimeout(() => navigate("/"), 1500)
+      if (response.data.success) {
+        localStorage.setItem("userData", JSON.stringify(response.data.user))
+        setSuccess("Profile completed successfully! Redirecting...")
+        setTimeout(() => navigate("/"), 1500)
+      }
     } catch (error) {
       console.error("Complete profile error:", error)
       setError(error.response?.data?.message || "Failed to complete profile. Please try again.")
@@ -168,7 +172,13 @@ const Login = () => {
         localStorage.setItem("isLoggedIn", "true")
 
         setSuccess("Google login successful! Redirecting...")
-        setTimeout(() => navigate(response.data.isNewUser || !response.data.user.name || !response.data.user.phone ? "/account/profile?complete=true" : "/"), 1500)
+        setTimeout(
+          () =>
+            navigate(
+              response.data.isNewUser || !response.data.user.profileComplete ? "/account/profile?complete=true" : "/",
+            ),
+          1500,
+        )
       }
     } catch (error) {
       console.error("Google login error:", error)
@@ -263,11 +273,7 @@ const Login = () => {
                       disabled={renderProps.disabled || isLoading}
                       className="google-signin-btn"
                     >
-                      <img
-                        src="https://www.google.com/favicon.ico"
-                        alt="Google"
-                        className="google-logo"
-                      />
+                      <img src="https://www.google.com/favicon.ico" alt="Google" className="google-logo" />
                       Sign in with Google
                     </button>
                   )}
@@ -367,12 +373,7 @@ const Login = () => {
                       {countdown > 0 ? (
                         <span className="resend-timer">Resend OTP in {countdown}s</span>
                       ) : (
-                        <button
-                          type="button"
-                          className="resend-btn"
-                          onClick={handleResendOtp}
-                          disabled={isLoading}
-                        >
+                        <button type="button" className="resend-btn" onClick={handleResendOtp} disabled={isLoading}>
                           Resend OTP
                         </button>
                       )}
@@ -397,9 +398,7 @@ const Login = () => {
             {showProfileForm && (
               <div className="profile-complete-section mt-3">
                 <h3 className="profile-complete-title">Complete Your Profile</h3>
-                <p className="profile-complete-subtitle">
-                  Please provide your name and phone number to continue
-                </p>
+                <p className="profile-complete-subtitle">Please provide your name and phone number to continue</p>
                 <form onSubmit={handleCompleteProfile} className="profile-form">
                   <div className="form-group">
                     <label htmlFor="name" className="form-label">
@@ -426,7 +425,14 @@ const Login = () => {
                     </label>
                     <div className="input-group">
                       <span className="input-group-text">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                         </svg>
                       </span>

@@ -66,7 +66,7 @@ router.post(
       next()
     })
   },
-  authController.uploadAvatar
+  authController.uploadAvatar,
 )
 
 module.exports = router

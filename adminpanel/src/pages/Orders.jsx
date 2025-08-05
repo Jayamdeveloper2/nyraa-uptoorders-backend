@@ -1,137 +1,411 @@
+"use client";
 
-import { useState } from "react"
-import { Search, Download, Eye, Truck, Package, CheckCircle, Clock } from "lucide-react"
-import { useToast } from "../context/ToastContext"
-import Modal from "../components/Modal"
+import { useState, useEffect } from "react";
+import {
+  Search,
+  Download,
+  Eye,
+  Truck,
+  Package,
+  CheckCircle,
+  Clock,
+  RefreshCw,
+  Package2,
+  DollarSign,
+  AlertCircle,
+  XCircle,
+} from "lucide-react";
+import { useToast } from "../context/ToastContext";
+import Modal from "../components/Modal";
+import { orderAPI } from "../services/api";
 
 const Orders = () => {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [dateFilter, setDateFilter] = useState("all")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
-  const [showOrderModal, setShowOrderModal] = useState(false)
-  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [updating, setUpdating] = useState({});
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 10,
+    totalPages: 0,
+  });
+  const [orderStats, setOrderStats] = useState({
+    totalOrders: 0,
+    totalRevenue: 0,
+    pendingOrders: 0,
+    deliveredOrders: 0,
+  });
 
-  const { addToast } = useToast()
+  const { addToast } = useToast();
 
-  const [orders, setOrders] = useState([
-    {
-      id: "#NY1234",
-      customer: "Priya Sharma",
-      email: "priya@example.com",
-      phone: "+91 98765 43210",
-      products: [{ name: "Elegant Rose Gold Dress", quantity: 1, price: 2999 }],
-      date: "2024-03-15",
-      status: "Delivered",
-      total: 2999,
-      paymentStatus: "Paid",
-      paymentMethod: "Credit Card",
-      shippingAddress: "123 Main St, Mumbai, Maharashtra 400001",
-      trackingNumber: "TRK123456789",
-    },
-    {
-      id: "#NY1235",
-      customer: "Rahul Kumar",
-      email: "rahul@example.com",
-      phone: "+91 98765 43211",
-      products: [{ name: "Chic Summer Dress", quantity: 1, price: 1499 }],
-      date: "2024-03-14",
-      status: "Processing",
-      total: 1499,
-      paymentStatus: "Paid",
-      paymentMethod: "UPI",
-      shippingAddress: "456 Park Ave, Delhi, Delhi 110001",
-      trackingNumber: "TRK123456790",
-    },
-    {
-      id: "#NY1236",
-      customer: "Anita Singh",
-      email: "anita@example.com",
-      phone: "+91 98765 43212",
-      products: [
-        { name: "Floral Maxi Dress", quantity: 2, price: 1800 },
-        { name: "Classic Yellow Top", quantity: 1, price: 1499 },
-      ],
-      date: "2024-03-13",
-      status: "Shipped",
-      total: 3299,
-      paymentStatus: "Paid",
-      paymentMethod: "Debit Card",
-      shippingAddress: "789 Oak St, Bangalore, Karnataka 560001",
-      trackingNumber: "TRK123456791",
-    },
-    {
-      id: "#NY1237",
-      customer: "Vikram Patel",
-      email: "vikram@example.com",
-      phone: "+91 98765 43213",
-      products: [{ name: "Casual Denim Shirt", quantity: 1, price: 899 }],
-      date: "2024-03-12",
-      status: "Pending",
-      total: 899,
-      paymentStatus: "Pending",
-      paymentMethod: "COD",
-      shippingAddress: "321 Pine St, Pune, Maharashtra 411001",
-      trackingNumber: "",
-    },
-  ])
+  // Order status options - Fixed to match backend
+  const ORDER_STATUS_OPTIONS = [
+    { value: "all", label: "All Status" },
+    { value: "pending", label: "Pending" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "processing", label: "Processing" },
+    { value: "shipped", label: "Shipped" },
+    { value: "delivered", label: "Delivered" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "refunded", label: "Refunded" },
+  ];
+
+  // Fetch orders from API
+  const fetchOrders = async (page = 1, filters = {}) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = {
+        page,
+        limit: itemsPerPage,
+        ...filters,
+      };
+
+      // Add status filter if not 'all'
+      if (statusFilter && statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+
+      // Add date filter
+      if (dateFilter && dateFilter !== "all") {
+        const now = new Date();
+        const startDate = new Date();
+
+        switch (dateFilter) {
+          case "today":
+            startDate.setHours(0, 0, 0, 0);
+            params.startDate = startDate.toISOString();
+            params.endDate = now.toISOString();
+            break;
+          case "week":
+            startDate.setDate(now.getDate() - 7);
+            params.startDate = startDate.toISOString();
+            params.endDate = now.toISOString();
+            break;
+          case "month":
+            startDate.setMonth(now.getMonth() - 1);
+            params.startDate = startDate.toISOString();
+            params.endDate = now.toISOString();
+            break;
+        }
+      }
+
+      const response = await orderAPI.getAllOrders(params);
+
+      if (response.success) {
+        // Transform the orders data to match the expected format
+        const transformedOrders = response.orders.map((order) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customer: order.user?.name || "N/A",
+          email: order.user?.email || "N/A",
+          phone: order.user?.phone || "N/A",
+          products: order.items || [],
+          date: order.orderDate
+            ? new Date(order.orderDate).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+          status: order.status,
+          total: Number.parseFloat(order.total) || 0,
+          paymentStatus: order.paymentStatus === "paid" ? "Paid" : "Pending",
+          paymentMethod: order.paymentMethod || "N/A",
+          shippingAddress: order.shippingAddress, // Now always a JSON object
+          trackingNumber: order.trackingNumber || "",
+          subtotal: Number.parseFloat(order.subtotal) || 0,
+          shipping: Number.parseFloat(order.shipping) || 0,
+          tax: Number.parseFloat(order.tax) || 0,
+          discount: Number.parseFloat(order.discount) || 0,
+          specialInstructions: order.specialInstructions || "",
+          items: order.items || [],
+          statusHistory: order.statusHistory || [],
+          user: order.user || {},
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          deliveryDate: order.deliveryDate,
+          couponCode: order.couponCode,
+        }));
+
+        setOrders(transformedOrders);
+        setPagination(
+          response.pagination || {
+            total: transformedOrders.length,
+            page: page,
+            limit: itemsPerPage,
+            totalPages: Math.ceil(transformedOrders.length / itemsPerPage),
+          }
+        );
+
+        // Calculate stats from orders
+        const stats = {
+          totalOrders: transformedOrders.length,
+          totalRevenue: transformedOrders.reduce((sum, order) => sum + order.total, 0),
+          pendingOrders: transformedOrders.filter((order) => order.status === "pending").length,
+          deliveredOrders: transformedOrders.filter((order) => order.status === "delivered").length,
+        };
+        setOrderStats(stats);
+      } else {
+        throw new Error(response.message || "Failed to fetch orders");
+      }
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      setError(error.message);
+      addToast("Failed to fetch orders: " + error.message, "error");
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load orders on component mount and when filters change
+  useEffect(() => {
+    fetchOrders(currentPage, { status: statusFilter });
+  }, [currentPage, statusFilter, dateFilter]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery) {
+        setCurrentPage(1);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case "Delivered":
-        return "bg-green-100 text-green-800"
-      case "Shipped":
-        return "bg-blue-100 text-blue-800"
-      case "Processing":
-        return "bg-yellow-100 text-yellow-800"
-      case "Pending":
-        return "bg-gray-100 text-gray-800"
-      case "Cancelled":
-        return "bg-red-100 text-red-800"
+    switch (status?.toLowerCase()) {
+      case "delivered":
+        return "bg-green-100 text-green-800";
+      case "shipped":
+        return "bg-blue-100 text-blue-800";
+      case "processing":
+        return "bg-yellow-100 text-yellow-800";
+      case "confirmed":
+        return "bg-purple-100 text-purple-800";
+      case "pending":
+        return "bg-gray-100 text-gray-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      case "refunded":
+        return "bg-orange-100 text-orange-800";
       default:
-        return "bg-gray-100 text-gray-800"
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
   const getStatusIcon = (status) => {
-    switch (status) {
-      case "Delivered":
-        return <CheckCircle size={16} />
-      case "Shipped":
-        return <Truck size={16} />
-      case "Processing":
-        return <Package size={16} />
-      case "Pending":
-        return <Clock size={16} />
+    switch (status?.toLowerCase()) {
+      case "delivered":
+        return <CheckCircle size={16} />;
+      case "shipped":
+        return <Truck size={16} />;
+      case "processing":
+        return <Package size={16} />;
+      case "confirmed":
+        return <AlertCircle size={16} />;
+      case "pending":
+        return <Clock size={16} />;
+      case "cancelled":
+        return <XCircle size={16} />;
+      case "refunded":
+        return <RefreshCw size={16} />;
       default:
-        return <Clock size={16} />
+        return <Clock size={16} />;
     }
-  }
+  };
 
+  // Filter orders based on search query
   const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.email.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!searchQuery) return true;
 
-    const matchesStatus = statusFilter === "all" || order.status.toLowerCase() === statusFilter
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      order.orderNumber?.toLowerCase().includes(searchLower) ||
+      order.customer?.toLowerCase().includes(searchLower) ||
+      order.email?.toLowerCase().includes(searchLower) ||
+      order.phone?.toLowerCase().includes(searchLower)
+    );
+  });
 
-    return matchesSearch && matchesStatus
-  })
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + itemsPerPage);
 
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + itemsPerPage)
+  const updateOrderStatus = async (orderId, newStatus) => {
+    try {
+      setUpdating((prev) => ({ ...prev, [orderId]: true }));
 
-  const updateOrderStatus = (orderId, newStatus) => {
-    setOrders(orders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)))
-    addToast(`Order ${orderId} status updated to ${newStatus}`, "success")
-  }
+      const response = await orderAPI.updateOrderStatus(orderId, {
+        status: newStatus,
+        comment: `Status updated to ${newStatus}`,
+      });
 
-  const openOrderModal = (order) => {
-    setSelectedOrder(order)
-    setShowOrderModal(true)
+      if (response.success) {
+        // Update the order in the local state
+        setOrders((prevOrders) =>
+          prevOrders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order))
+        );
+
+        addToast(`Order ${orderId} status updated to ${newStatus}`, "success");
+
+        // Refresh orders to get latest data
+        await fetchOrders(currentPage, { status: statusFilter });
+      } else {
+        throw new Error(response.message || "Failed to update order status");
+      }
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      addToast("Failed to update order status: " + error.message, "error");
+    } finally {
+      setUpdating((prev) => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const openOrderModal = async (order) => {
+    try {
+      // Fetch detailed order information
+      const response = await orderAPI.getOrder(order.id);
+      if (response.success) {
+        // Transform the detailed order data
+        const detailedOrder = {
+          ...order,
+          ...response.order,
+          shippingAddress: response.order.shippingAddress, // Now always a JSON object
+          items: response.order.items || [],
+          statusHistory: response.order.statusHistory || [],
+        };
+        setSelectedOrder(detailedOrder);
+        setShowOrderModal(true);
+      } else {
+        throw new Error(response.message || "Failed to fetch order details");
+      }
+    } catch (error) {
+      console.error("Error fetching order details:", error);
+      addToast("Failed to fetch order details: " + error.message, "error");
+      // Fallback to showing the order with available data
+      setSelectedOrder(order);
+      setShowOrderModal(true);
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchOrders(currentPage, { status: statusFilter });
+  };
+
+  const handleExportOrders = async () => {
+    try {
+      // Create CSV content
+      const csvHeaders = [
+        "Order Number",
+        "Customer",
+        "Email",
+        "Phone",
+        "Date",
+        "Status",
+        "Payment Status",
+        "Total",
+        "Items Count",
+      ];
+
+      const csvRows = filteredOrders.map((order) => [
+        order.orderNumber,
+        order.customer,
+        order.email,
+        order.phone,
+        formatDate(order.date),
+        order.status,
+        order.paymentStatus,
+        order.total,
+        order.items?.length || 0,
+      ]);
+
+      const csvContent = [
+        csvHeaders.join(","),
+        ...csvRows.map((row) => row.map((field) => `"${field}"`).join(",")),
+      ].join("\n");
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `orders-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      addToast("Orders exported successfully", "success");
+    } catch (error) {
+      console.error("Error exporting orders:", error);
+      addToast("Failed to export orders", "error");
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+    }).format(amount || 0);
+  };
+
+  const formatAddress = (address) => {
+    if (!address) return "N/A";
+
+    // Assuming address is now always an object
+    if (typeof address === "object") {
+      const parts = [
+        address.name,
+        address.street,
+        address.addressLine2,
+        `${address.city}, ${address.state} ${address.zip}`,
+        address.country,
+        address.phone && `Phone: ${address.phone}`,
+      ].filter(Boolean);
+
+      return parts.join(", ");
+    }
+
+    return "N/A";
+  };
+
+  if (loading && orders.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <RefreshCw className="animate-spin mx-auto mb-4" size={32} />
+          <p className="text-gray-600">Loading orders...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -142,11 +416,85 @@ const Orders = () => {
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Order Management</h1>
           <p className="text-gray-600 mt-1">Track and manage all customer orders</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-          <Download size={20} />
-          Export Orders
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+          <button
+            onClick={handleExportOrders}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Download size={20} />
+            Export Orders
+          </button>
+        </div>
       </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Orders</p>
+              <p className="text-2xl font-bold text-gray-900">{orderStats.totalOrders}</p>
+            </div>
+            <div className="p-3 bg-blue-100 rounded-full">
+              <Package2 size={24} className="text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(orderStats.totalRevenue)}</p>
+            </div>
+            <div className="p-3 bg-green-100 rounded-full">
+              <DollarSign size={24} className="text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Pending Orders</p>
+              <p className="text-2xl font-bold text-gray-900">{orderStats.pendingOrders}</p>
+            </div>
+            <div className="p-3 bg-yellow-100 rounded-full">
+              <Clock size={24} className="text-yellow-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Delivered</p>
+              <p className="text-2xl font-bold text-gray-900">{orderStats.deliveredOrders}</p>
+            </div>
+            <div className="p-3 bg-green-100 rounded-full">
+              <CheckCircle size={24} className="text-green-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+          <button onClick={handleRefresh} className="mt-2 text-red-600 hover:text-red-800 underline">
+            Try again
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
@@ -156,26 +504,25 @@ const Orders = () => {
               <input
                 type="text"
                 placeholder="Search orders, customers..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             </div>
             <select
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
+              {ORDER_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
             <select
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             >
@@ -205,109 +552,135 @@ const Orders = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200/50">
-              {paginatedOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="py-4 px-6">
-                    <span className="font-medium text-indigo-600">{order.id}</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div>
-                      <div className="font-medium text-gray-900">{order.customer}</div>
-                      <div className="text-sm text-gray-500">{order.email}</div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-gray-700">{order.products.length} item(s)</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-gray-700">{order.date}</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}
-                      >
-                        {getStatusIcon(order.status)}
-                        {order.status}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        order.paymentStatus === "Paid" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {order.paymentStatus}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="font-semibold text-gray-900">₹{order.total.toLocaleString()}</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openOrderModal(order)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="View Details"
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <select
-                        value={order.status}
-                        onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                        className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Processing">Processing</option>
-                        <option value="Shipped">Shipped</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan="8" className="py-8 px-6 text-center text-gray-500">
+                    <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
+                    Loading orders...
                   </td>
                 </tr>
-              ))}
+              ) : paginatedOrders.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="py-8 px-6 text-center text-gray-500">
+                    {searchQuery ? "No orders found matching your search" : "No orders found"}
+                  </td>
+                </tr>
+              ) : (
+                paginatedOrders.map((order) => (
+                  <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="py-4 px-6">
+                      <span className="font-medium text-indigo-600">{order.orderNumber}</span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div>
+                        <div className="font-medium text-gray-900">{order.customer}</div>
+                        <div className="text-sm text-gray-500">{order.email}</div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="text-gray-700">
+                        {order.products?.length || order.items?.length || 0} item(s)
+                      </span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="text-gray-700">{formatDate(order.date || order.orderDate)}</span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}
+                        >
+                          {getStatusIcon(order.status)}
+                          {order.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          order.paymentStatus === "Paid" || order.paymentStatus === "paid"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {order.paymentStatus}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="font-semibold text-gray-900">{formatCurrency(order.total)}</span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openOrderModal(order)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="View Details"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <select
+                          value={order.status}
+                          onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                          disabled={updating[order.id]}
+                          className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+                        >
+                          {ORDER_STATUS_OPTIONS.slice(1).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination */}
-        <div className="px-6 py-4 border-t border-gray-200/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <p className="text-sm text-gray-600">
-            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredOrders.length)} of{" "}
-            {filteredOrders.length} orders
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <p className="text-sm text-gray-600">
+              Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredOrders.length)} of{" "}
+              {filteredOrders.length} orders
+            </p>
+            <div className="flex gap-2">
               <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-3 py-2 rounded-lg ${
-                  currentPage === page
-                    ? "bg-indigo-600 text-white"
-                    : "border border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {page}
+                Previous
               </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const page = Math.max(1, currentPage - 2) + i;
+                if (page > totalPages) return null;
+                return (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-2 rounded-lg transition-colors ${
+                      currentPage === page
+                        ? "bg-indigo-600 text-white"
+                        : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Order Details Modal */}
@@ -317,8 +690,11 @@ const Orders = () => {
             {/* Order Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-gray-50 rounded-lg">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">{selectedOrder.id}</h3>
-                <p className="text-gray-600">Placed on {selectedOrder.date}</p>
+                <h3 className="text-lg font-semibold text-gray-900">{selectedOrder.orderNumber}</h3>
+                <p className="text-gray-600">Placed on {formatDate(selectedOrder.date || selectedOrder.orderDate)}</p>
+                {selectedOrder.deliveryDate && (
+                  <p className="text-gray-600">Delivered on {formatDate(selectedOrder.deliveryDate)}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span
@@ -336,19 +712,22 @@ const Orders = () => {
                 <h4 className="font-semibold text-gray-900 mb-3">Customer Information</h4>
                 <div className="space-y-2">
                   <p>
-                    <span className="text-gray-600">Name:</span> {selectedOrder.customer}
+                    <span className="text-gray-600">Name:</span>{" "}
+                    {selectedOrder.customer || selectedOrder.user?.name || "N/A"}
                   </p>
                   <p>
-                    <span className="text-gray-600">Email:</span> {selectedOrder.email}
+                    <span className="text-gray-600">Email:</span>{" "}
+                    {selectedOrder.email || selectedOrder.user?.email || "N/A"}
                   </p>
                   <p>
-                    <span className="text-gray-600">Phone:</span> {selectedOrder.phone}
+                    <span className="text-gray-600">Phone:</span>{" "}
+                    {selectedOrder.phone || selectedOrder.user?.phone || "N/A"}
                   </p>
                 </div>
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Shipping Address</h4>
-                <p className="text-gray-700">{selectedOrder.shippingAddress}</p>
+                <p className="text-gray-700 whitespace-pre-line">{formatAddress(selectedOrder.shippingAddress)}</p>
                 {selectedOrder.trackingNumber && (
                   <p className="mt-2">
                     <span className="text-gray-600">Tracking:</span> {selectedOrder.trackingNumber}
@@ -371,12 +750,35 @@ const Orders = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {selectedOrder.products.map((product, index) => (
+                    {(selectedOrder.items || selectedOrder.products || []).map((item, index) => (
                       <tr key={index}>
-                        <td className="py-3 px-4">{product.name}</td>
-                        <td className="py-3 px-4">{product.quantity}</td>
-                        <td className="py-3 px-4">₹{product.price}</td>
-                        <td className="py-3 px-4">₹{product.quantity * product.price}</td>
+                        <td className="py-3 px-4">
+                          <div>
+                            <p className="font-medium">{item.productName || item.name}</p>
+                            {item.variant && (
+                              <p className="text-sm text-gray-500">
+                                {typeof item.variant === "string"
+                                  ? (() => {
+                                      try {
+                                        return Object.entries(JSON.parse(item.variant) || {})
+                                          .filter(([key, value]) => value)
+                                          .map(([key, value]) => `${key}: ${value}`)
+                                          .join(", ");
+                                      } catch {
+                                        return item.variant;
+                                      }
+                                    })()
+                                  : Object.entries(item.variant || {})
+                                      .filter(([key, value]) => value)
+                                      .map(([key, value]) => `${key}: ${value}`)
+                                      .join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">{item.quantity}</td>
+                        <td className="py-3 px-4">{formatCurrency(item.price)}</td>
+                        <td className="py-3 px-4">{formatCurrency(item.quantity * item.price)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -394,7 +796,7 @@ const Orders = () => {
                   <span className="text-gray-600">Payment Status:</span>
                   <span
                     className={`ml-2 px-2 py-1 rounded text-sm ${
-                      selectedOrder.paymentStatus === "Paid"
+                      selectedOrder.paymentStatus === "Paid" || selectedOrder.paymentStatus === "paid"
                         ? "bg-green-100 text-green-800"
                         : "bg-yellow-100 text-yellow-800"
                     }`}
@@ -402,16 +804,84 @@ const Orders = () => {
                     {selectedOrder.paymentStatus}
                   </span>
                 </p>
+                {selectedOrder.couponCode && (
+                  <p>
+                    <span className="text-gray-600">Coupon Code:</span> {selectedOrder.couponCode}
+                  </p>
+                )}
               </div>
               <div className="text-right">
-                <p className="text-lg font-semibold text-gray-900">Total: ₹{selectedOrder.total.toLocaleString()}</p>
+                <div className="space-y-1">
+                  {selectedOrder.subtotal && (
+                    <p className="text-sm text-gray-600">Subtotal: {formatCurrency(selectedOrder.subtotal)}</p>
+                  )}
+                  {selectedOrder.shipping && (
+                    <p className="text-sm text-gray-600">Shipping: {formatCurrency(selectedOrder.shipping)}</p>
+                  )}
+                  {selectedOrder.tax && (
+                    <p className="text-sm text-gray-600">Tax: {formatCurrency(selectedOrder.tax)}</p>
+                  )}
+                  {selectedOrder.discount > 0 && (
+                    <p className="text-sm text-gray-600">Discount: -{formatCurrency(selectedOrder.discount)}</p>
+                  )}
+                  <p className="text-lg font-semibold text-gray-900">Total: {formatCurrency(selectedOrder.total)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Order Status History */}
+            {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Status History</h4>
+                <div className="space-y-2">
+                  {selectedOrder.statusHistory.map((history, index) => (
+                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium capitalize">{history.status}</p>
+                        {history.comment && <p className="text-sm text-gray-600">{history.comment}</p>}
+                      </div>
+                      <div className="text-right text-sm text-gray-500">
+                        <p>{formatDateTime(history.changedAt)}</p>
+                        <p>by {history.changedBy}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Special Instructions */}
+            {selectedOrder.specialInstructions && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Special Instructions</h4>
+                <p className="text-gray-700 p-3 bg-gray-50 rounded-lg">{selectedOrder.specialInstructions}</p>
+              </div>
+            )}
+
+            {/* Order Timestamps */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Order Timeline</h4>
+                <div className="space-y-2">
+                  <p>
+                    <span className="text-gray-600">Created:</span> {formatDateTime(selectedOrder.createdAt)}
+                  </p>
+                  <p>
+                    <span className="text-gray-600">Last Updated:</span> {formatDateTime(selectedOrder.updatedAt)}
+                  </p>
+                  {selectedOrder.deliveryDate && (
+                    <p>
+                      <span className="text-gray-600">Delivered:</span> {formatDateTime(selectedOrder.deliveryDate)}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
       </Modal>
     </div>
-  )
-}
+  );
+};
 
-export default Orders
+export default Orders;

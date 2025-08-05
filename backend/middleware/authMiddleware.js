@@ -6,7 +6,10 @@ module.exports = async (req, res, next) => {
   const token = req.header("Authorization")?.replace("Bearer ", "")
 
   if (!token) {
-    return res.status(401).json({ message: "No token provided" })
+    return res.status(401).json({
+      success: false,
+      message: "No token provided",
+    })
   }
 
   try {
@@ -14,29 +17,46 @@ module.exports = async (req, res, next) => {
     let user
 
     if (decoded.type === "admin") {
-      user = await Admin.findByPk(decoded.id)
+      user = await Admin.findByPk(decoded.id, {
+        attributes: { exclude: ["password"] },
+      })
       req.userType = "admin"
     } else {
-      user = await User.findByPk(decoded.id)
+      user = await User.findByPk(decoded.id, {
+        attributes: { exclude: ["password", "otp", "otpExpires"] },
+      })
       req.userType = "user"
     }
 
     if (!user) {
-      return res.status(401).json({ message: "User not found or token invalid" })
+      return res.status(401).json({
+        success: false,
+        message: "User not found or token invalid",
+      })
     }
 
     // Check if user is active
     if (user.status && user.status !== "Active") {
-      return res.status(401).json({ message: "Account is inactive" })
+      return res.status(401).json({
+        success: false,
+        message: "Account is inactive",
+      })
     }
 
     req.user = user
+    req.userId = user.id
     next()
   } catch (error) {
     console.error("Auth middleware error:", error)
     if (error.name === "TokenExpiredError") {
-      return res.status(401).json({ message: "Token expired" })
+      return res.status(401).json({
+        success: false,
+        message: "Token expired",
+      })
     }
-    res.status(401).json({ message: "Invalid token" })
+    res.status(401).json({
+      success: false,
+      message: "Invalid token",
+    })
   }
 }

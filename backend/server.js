@@ -28,15 +28,13 @@ const fs = require("fs")
 require("dotenv").config()
 
 // Import and setup associations
-const setupAssociations = require("./models/associations") 
+const setupAssociations = require("./models/associations")
 
 const app = express()
 
-
-app.get('/', (req, res) => {
-  res.json({ success: true, message: 'Server is running 🚀' });
-});
-
+app.get("/", (req, res) => {
+  res.json({ success: true, message: "Server is running 🚀" })
+})
 
 // Create uploads directories if they don't exist
 const uploadDirs = ["uploads", "uploads/products", "uploads/avatars"]
@@ -110,7 +108,6 @@ app.use("/api", sizeRoutes)
 app.use("/api/orders", orderRoutes) // Fixed: Use /api/orders prefix
 app.use("/api/addresses", addressRoutes)
 
-
 async function testConnection() {
   try {
     await sequelize.authenticate()
@@ -148,11 +145,11 @@ async function startServer() {
         phone: "+91 98765 43210",
         department: "Administration",
         avatar: "",
-        joinDate: new Date().toISOString().split("T")[0], 
+        joinDate: new Date().toISOString().split("T")[0],
         role: "Administrator",
       })
 
-      console.log("✅ Default admin user created") 
+      console.log("✅ Default admin user created")
     }
 
     app.listen(PORT, () => {
@@ -168,15 +165,13 @@ async function startServer() {
       console.log(`   GET  /api/orders - Get user orders`)
       console.log(`   GET  /api/orders/:id - Get single order`)
       console.log(`   PATCH /api/orders/:id/status - Update order status`)
-      console.log(`   GET  /api/orders/stats - Get order statistics`)
+      console.log(`   GET  /api/orders/admin/stats - Get order statistics`)
     })
   } catch (error) {
     console.error("❌ Server startup error:", error)
     process.exit(1)
   }
 }
-
-
 
 // Handle 404 routes
 app.use("*", (req, res) => {

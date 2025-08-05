@@ -28,12 +28,18 @@ exports.adminLogin = async (req, res) => {
   try {
     const admin = await Admin.findOne({ where: { username } })
     if (!admin) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      })
     }
 
     const isMatch = await bcrypt.compare(password, admin.password)
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      })
     }
 
     // Update last login
@@ -61,7 +67,10 @@ exports.adminLogin = async (req, res) => {
     })
   } catch (error) {
     console.error("Error during admin login:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    })
   }
 }
 
@@ -73,24 +82,36 @@ exports.userLogin = async (req, res) => {
     const user = await User.findOne({ where: { email: normalizedEmail } })
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      })
     }
 
     if (user.provider === "google") {
-      return res.status(400).json({ message: "Please use Google login for this account" })
+      return res.status(400).json({
+        success: false,
+        message: "Please use Google login for this account",
+      })
     }
 
     if (!user.password) {
-      return res.status(400).json({ message: "Please set a password for your account or use OTP login" })
+      return res.status(400).json({
+        success: false,
+        message: "Please set a password for your account or use OTP login",
+      })
     }
 
     const isMatch = await bcrypt.compare(password, user.password)
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      })
     }
 
     const token = jwt.sign({ id: user.id, type: "user" }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     })
 
     res.json({
@@ -110,27 +131,10 @@ exports.userLogin = async (req, res) => {
     })
   } catch (error) {
     console.error("Error during user login:", error)
-    res.status(500).json({ message: "Server error" })
-  }
-}
-
-// Combined login endpoint (checks both admin and user)
-exports.login = async (req, res) => {
-  const { username, email, password } = req.body
-
-  try {
-    if (username) {
-      // Admin login
-      return exports.adminLogin(req, res)
-    } else if (email) {
-      // User login
-      return exports.userLogin(req, res)
-    } else {
-      return res.status(400).json({ message: "Username or email required" })
-    }
-  } catch (error) {
-    console.error("Error during login:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    })
   }
 }
 
@@ -139,7 +143,10 @@ exports.sendOTP = async (req, res) => {
   const { email } = req.body
 
   if (!email) {
-    return res.status(400).json({ message: "Email is required" })
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    })
   }
 
   try {
@@ -161,7 +168,10 @@ exports.sendOTP = async (req, res) => {
 
     // Check if it's a Google account
     if (user.provider === "google") {
-      return res.status(400).json({ message: "Google accounts cannot use OTP login. Please use Google Sign-In." })
+      return res.status(400).json({
+        success: false,
+        message: "Google accounts cannot use OTP login. Please use Google Sign-In.",
+      })
     }
 
     const otp = generateOTP()
@@ -174,7 +184,7 @@ exports.sendOTP = async (req, res) => {
     // Send email if configured
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
-        const transporter = nodemailer.createTransport({
+        const transporter = nodemailer.createTransporter({
           service: "gmail",
           auth: {
             user: process.env.EMAIL_USER,
@@ -182,24 +192,23 @@ exports.sendOTP = async (req, res) => {
           },
         })
 
-      const mailOptions = {
-  from: `"Nyraa" <${process.env.EMAIL_USER}>`, 
-  to: normalizedEmail,
-  subject: "Your OTP for Login",
-  html: `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Your Login OTP</h2>
-      <p>Hello,</p>
-      <p>Your OTP for login is:</p>
-      <div style="background-color: #f0f0f0; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 3px; margin: 20px 0;">
-        ${otp}
-      </div>
-      <p>This OTP is valid for 10 minutes.</p>
-      <p>If you didn't request this OTP, please ignore this email.</p>
-    </div>
-  `,
-}
-
+        const mailOptions = {
+          from: `"Nyraa" <${process.env.EMAIL_USER}>`,
+          to: normalizedEmail,
+          subject: "Your OTP for Login",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">Your Login OTP</h2>
+              <p>Hello,</p>
+              <p>Your OTP for login is:</p>
+              <div style="background-color: #f0f0f0; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 3px; margin: 20px 0;">
+                ${otp}
+              </div>
+              <p>This OTP is valid for 10 minutes.</p>
+              <p>If you didn't request this OTP, please ignore this email.</p>
+            </div>
+          `,
+        }
 
         await transporter.sendMail(mailOptions)
         console.log(`OTP email sent to ${normalizedEmail}`)
@@ -218,7 +227,10 @@ exports.sendOTP = async (req, res) => {
     })
   } catch (error) {
     console.error("Error sending OTP:", error)
-    res.status(500).json({ message: "Failed to send OTP" })
+    res.status(500).json({
+      success: false,
+      message: "Failed to send OTP",
+    })
   }
 }
 
@@ -227,7 +239,10 @@ exports.verifyOTP = async (req, res) => {
   const { email, otp } = req.body
 
   if (!email || !otp) {
-    return res.status(400).json({ message: "Email and OTP are required" })
+    return res.status(400).json({
+      success: false,
+      message: "Email and OTP are required",
+    })
   }
 
   try {
@@ -235,19 +250,31 @@ exports.verifyOTP = async (req, res) => {
     const user = await User.findOne({ where: { email: normalizedEmail } })
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" })
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
     }
 
     if (!user.otp || !user.otpExpires) {
-      return res.status(400).json({ message: "No OTP found. Please request a new OTP." })
+      return res.status(400).json({
+        success: false,
+        message: "No OTP found. Please request a new OTP.",
+      })
     }
 
     if (user.otp !== otp.toString()) {
-      return res.status(400).json({ message: "Invalid OTP" })
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      })
     }
 
     if (Date.now() > user.otpExpires) {
-      return res.status(400).json({ message: "OTP has expired. Please request a new OTP." })
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new OTP.",
+      })
     }
 
     // Clear OTP and mark as verified
@@ -258,7 +285,7 @@ exports.verifyOTP = async (req, res) => {
 
     // Generate JWT token for automatic login
     const token = jwt.sign({ id: user.id, type: "user" }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: "30d",
     })
 
     res.json({
@@ -279,7 +306,10 @@ exports.verifyOTP = async (req, res) => {
     })
   } catch (error) {
     console.error("Error verifying OTP:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    })
   }
 }
 
@@ -335,8 +365,8 @@ exports.googleLogin = async (req, res) => {
       }
     }
 
-    const jwtToken = jwt.sign({ id: user.id, type: "user" }, process.env.JWT_SECRET, { 
-      expiresIn: "16d",
+    const jwtToken = jwt.sign({ id: user.id, type: "user" }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
     })
 
     res.json({
@@ -357,43 +387,66 @@ exports.googleLogin = async (req, res) => {
     })
   } catch (error) {
     console.error("Error during Google login:", error)
-    res.status(401).json({ message: "Google authentication failed" })
+    res.status(401).json({
+      success: false,
+      message: "Google authentication failed",
+    })
   }
 }
 
-// Get Profile
+// Get Profile - FIXED VERSION
 exports.getProfile = async (req, res) => {
   try {
+    console.log("Getting profile for user:", req.user?.id, "Type:", req.userType)
+
     const user = req.user
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
+
     if (req.userType === "admin") {
       res.json({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        name: user.name || "",
-        role: user.role,
-        avatar: user.avatar || "",
-        phone: user.phone || "",
-        department: user.department || "",
-        joinDate: user.joinDate || null,
-        type: "admin",
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username || "",
+          email: user.email || "",
+          name: user.name || "",
+          role: user.role || "",
+          avatar: user.avatar || "",
+          phone: user.phone || "",
+          department: user.department || "",
+          joinDate: user.joinDate || null,
+          type: "admin",
+        },
       })
     } else {
       res.json({
-        id: user.id,
-        email: user.email,
-        name: user.name || "",
-        phone: user.phone || "",
-        joinDate: user.joinDate || null,
-        avatar: user.avatar || "",
-        role: user.role,
-        type: "user",
-        profileComplete: isProfileComplete(user),
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email || "",
+          name: user.name || "",
+          phone: user.phone || "",
+          joinDate: user.joinDate || null,
+          avatar: user.avatar || "",
+          role: user.role || "user",
+          type: "user",
+          profileComplete: isProfileComplete(user),
+        },
       })
     }
   } catch (error) {
     console.error("Error fetching profile:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching profile",
+      error: error.message,
+    })
   }
 }
 
@@ -402,6 +455,13 @@ exports.updateProfile = async (req, res) => {
   const { name, email, phone, joinDate, department } = req.body
   try {
     const user = req.user
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
 
     // Check if phone number already exists for another user
     if (phone && phone !== user.phone) {
@@ -413,50 +473,67 @@ exports.updateProfile = async (req, res) => {
       })
 
       if (existingUser) {
-        return res.status(400).json({ message: "This phone number is already registered with another account" })
+        return res.status(400).json({
+          success: false,
+          message: "This phone number is already registered with another account",
+        })
       }
     }
 
+    // Update user fields
+    if (name !== undefined) user.name = name
+    if (email !== undefined) user.email = normalizeEmail(email)
+    if (phone !== undefined) user.phone = phone
+    if (joinDate !== undefined) user.joinDate = joinDate
+
+    if (req.userType === "admin" && department !== undefined) {
+      user.department = department
+    }
+
+    await user.save()
+
+    // Return updated user data
     if (req.userType === "admin") {
-      user.name = name !== undefined ? name : user.name
-      user.email = email !== undefined ? normalizeEmail(email) : user.email
-      user.phone = phone !== undefined ? phone : user.phone
-      user.department = department !== undefined ? department : user.department
-      user.joinDate = joinDate !== undefined ? joinDate : user.joinDate
-      await user.save()
       res.json({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        name: user.name || "",
-        role: user.role,
-        avatar: user.avatar || "",
-        phone: user.phone || "",
-        department: user.department || "",
-        joinDate: user.joinDate || null,
-        type: "admin",
+        success: true,
+        message: "Profile updated successfully",
+        user: {
+          id: user.id,
+          username: user.username || "",
+          email: user.email || "",
+          name: user.name || "",
+          role: user.role || "",
+          avatar: user.avatar || "",
+          phone: user.phone || "",
+          department: user.department || "",
+          joinDate: user.joinDate || null,
+          type: "admin",
+        },
       })
     } else {
-      user.name = name !== undefined ? name : user.name
-      user.email = email !== undefined ? normalizeEmail(email) : user.email
-      user.phone = phone !== undefined ? phone : user.phone
-      user.joinDate = joinDate !== undefined ? joinDate : user.joinDate
-      await user.save()
       res.json({
-        id: user.id,
-        email: user.email,
-        name: user.name || "",
-        phone: user.phone || "",
-        joinDate: user.joinDate || null,
-        avatar: user.avatar || "",
-        role: user.role,
-        type: "user",
-        profileComplete: isProfileComplete(user),
+        success: true,
+        message: "Profile updated successfully",
+        user: {
+          id: user.id,
+          email: user.email || "",
+          name: user.name || "",
+          phone: user.phone || "",
+          joinDate: user.joinDate || null,
+          avatar: user.avatar || "",
+          role: user.role || "user",
+          type: "user",
+          profileComplete: isProfileComplete(user),
+        },
       })
     }
   } catch (error) {
     console.error("Error updating profile:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating profile",
+      error: error.message,
+    })
   }
 }
 
@@ -465,8 +542,19 @@ exports.changePassword = async (req, res) => {
   const { currentPassword, password } = req.body
   try {
     const user = req.user
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
+
     if (user.provider === "google") {
-      return res.status(400).json({ message: "Google accounts cannot change password here" })
+      return res.status(400).json({
+        success: false,
+        message: "Google accounts cannot change password here",
+      })
     }
 
     if (!user.password) {
@@ -475,22 +563,36 @@ exports.changePassword = async (req, res) => {
       const hashedPassword = await bcrypt.hash(password, salt)
       user.password = hashedPassword
       await user.save()
-      return res.status(200).json({ message: "Password set successfully." })
+      return res.status(200).json({
+        success: true,
+        message: "Password set successfully.",
+      })
     }
 
     const isAuth = await bcrypt.compare(currentPassword, user.password)
     if (!isAuth) {
-      return res.status(400).json({ message: "Incorrect current password." })
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect current password.",
+      })
     }
 
     const salt = await bcrypt.genSalt(10)
     const hashedPassword = await bcrypt.hash(password, salt)
     user.password = hashedPassword
     await user.save()
-    return res.status(200).json({ message: "Password successfully changed." })
+
+    return res.status(200).json({
+      success: true,
+      message: "Password successfully changed.",
+    })
   } catch (error) {
     console.error("Error changing password:", error)
-    return res.status(400).json({ message: error.message })
+    return res.status(500).json({
+      success: false,
+      message: "Server error while changing password",
+      error: error.message,
+    })
   }
 }
 
@@ -498,31 +600,63 @@ exports.changePassword = async (req, res) => {
 exports.uploadAvatar = async (req, res) => {
   try {
     const user = req.user
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" })
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
     }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      })
+    }
+
     const avatar = `${req.protocol}://${req.get("host")}/uploads/avatars/${req.file.filename}`
     user.avatar = avatar
     await user.save()
+
+    const responseUser =
+      req.userType === "admin"
+        ? {
+            id: user.id,
+            username: user.username || "",
+            email: user.email || "",
+            name: user.name || "",
+            role: user.role || "",
+            avatar: user.avatar || "",
+            phone: user.phone || "",
+            department: user.department || "",
+            joinDate: user.joinDate || null,
+            type: "admin",
+          }
+        : {
+            id: user.id,
+            email: user.email || "",
+            name: user.name || "",
+            phone: user.phone || "",
+            joinDate: user.joinDate || null,
+            avatar: user.avatar || "",
+            role: user.role || "user",
+            type: "user",
+            profileComplete: isProfileComplete(user),
+          }
+
     res.json({
       success: true,
-      user: {
-        id: user.id,
-        username: req.userType === "admin" ? user.username : undefined,
-        email: user.email,
-        name: user.name || "",
-        role: user.role,
-        avatar: user.avatar || "",
-        phone: user.phone || "",
-        department: req.userType === "admin" ? user.department || "" : undefined,
-        joinDate: user.joinDate || null,
-        type: req.userType,
-        profileComplete: req.userType === "user" ? isProfileComplete(user) : undefined,
-      },
+      message: "Avatar uploaded successfully",
+      user: responseUser,
     })
   } catch (error) {
     console.error("Error uploading avatar:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({
+      success: false,
+      message: "Server error while uploading avatar",
+      error: error.message,
+    })
   }
 }
 
