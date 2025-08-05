@@ -143,7 +143,6 @@ async function startServer() {
         password: hashedPassword,
         name: "Administrator",
         phone: "+91 98765 43210",
-        department: "Administration",
         avatar: "",
         joinDate: new Date().toISOString().split("T")[0],
         role: "Administrator",
