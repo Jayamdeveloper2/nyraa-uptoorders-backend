@@ -1,20 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Search,
-  Download,
-  Eye,
-  Truck,
-  Package,
-  CheckCircle,
-  Clock,
-  RefreshCw,
-  Package2,
-  DollarSign,
-  AlertCircle,
-  XCircle,
-} from "lucide-react";
+import { Search, Download, Eye, Truck, Package, CheckCircle, Clock, RefreshCw, Package2, IndianRupee , AlertCircle, XCircle } from 'lucide-react';
 import { useToast } from "../context/ToastContext";
 import Modal from "../components/Modal";
 import { orderAPI } from "../services/api";
@@ -46,7 +33,6 @@ const Orders = () => {
 
   const { addToast } = useToast();
 
-  // Order status options - Fixed to match backend
   const ORDER_STATUS_OPTIONS = [
     { value: "all", label: "All Status" },
     { value: "pending", label: "Pending" },
@@ -58,7 +44,6 @@ const Orders = () => {
     { value: "refunded", label: "Refunded" },
   ];
 
-  // Fetch orders from API
   const fetchOrders = async (page = 1, filters = {}) => {
     try {
       setLoading(true);
@@ -70,12 +55,10 @@ const Orders = () => {
         ...filters,
       };
 
-      // Add status filter if not 'all'
       if (statusFilter && statusFilter !== "all") {
         params.status = statusFilter;
       }
 
-      // Add date filter
       if (dateFilter && dateFilter !== "all") {
         const now = new Date();
         const startDate = new Date();
@@ -102,7 +85,6 @@ const Orders = () => {
       const response = await orderAPI.getAllOrders(params);
 
       if (response.success) {
-        // Transform the orders data to match the expected format
         const transformedOrders = response.orders.map((order) => ({
           id: order.id,
           orderNumber: order.orderNumber,
@@ -117,7 +99,7 @@ const Orders = () => {
           total: Number.parseFloat(order.total) || 0,
           paymentStatus: order.paymentStatus === "paid" ? "Paid" : "Pending",
           paymentMethod: order.paymentMethod || "N/A",
-          shippingAddress: order.shippingAddress, // Now always a JSON object
+          shippingAddress: order.shippingAddress || null,
           trackingNumber: order.trackingNumber || "",
           subtotal: Number.parseFloat(order.subtotal) || 0,
           shipping: Number.parseFloat(order.shipping) || 0,
@@ -143,7 +125,6 @@ const Orders = () => {
           }
         );
 
-        // Calculate stats from orders
         const stats = {
           totalOrders: transformedOrders.length,
           totalRevenue: transformedOrders.reduce((sum, order) => sum + order.total, 0),
@@ -156,20 +137,21 @@ const Orders = () => {
       }
     } catch (error) {
       console.error("Error fetching orders:", error);
-      setError(error.message);
-      addToast("Failed to fetch orders: " + error.message, "error");
+      const errorMessage = error.message.includes("Failed to connect")
+        ? "Unable to connect to the server. Please ensure the backend is running on http://localhost:5000."
+        : error.message;
+      setError(errorMessage);
+      addToast(errorMessage, "error");
       setOrders([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Load orders on component mount and when filters change
   useEffect(() => {
     fetchOrders(currentPage, { status: statusFilter });
   }, [currentPage, statusFilter, dateFilter]);
 
-  // Handle search with debouncing
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (searchQuery) {
@@ -222,7 +204,6 @@ const Orders = () => {
     }
   };
 
-  // Filter orders based on search query
   const filteredOrders = orders.filter((order) => {
     if (!searchQuery) return true;
 
@@ -249,14 +230,11 @@ const Orders = () => {
       });
 
       if (response.success) {
-        // Update the order in the local state
         setOrders((prevOrders) =>
           prevOrders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order))
         );
 
         addToast(`Order ${orderId} status updated to ${newStatus}`, "success");
-
-        // Refresh orders to get latest data
         await fetchOrders(currentPage, { status: statusFilter });
       } else {
         throw new Error(response.message || "Failed to update order status");
@@ -271,14 +249,12 @@ const Orders = () => {
 
   const openOrderModal = async (order) => {
     try {
-      // Fetch detailed order information
       const response = await orderAPI.getOrder(order.id);
       if (response.success) {
-        // Transform the detailed order data
         const detailedOrder = {
           ...order,
           ...response.order,
-          shippingAddress: response.order.shippingAddress, // Now always a JSON object
+          shippingAddress: response.order.shippingAddress,
           items: response.order.items || [],
           statusHistory: response.order.statusHistory || [],
         };
@@ -290,7 +266,6 @@ const Orders = () => {
     } catch (error) {
       console.error("Error fetching order details:", error);
       addToast("Failed to fetch order details: " + error.message, "error");
-      // Fallback to showing the order with available data
       setSelectedOrder(order);
       setShowOrderModal(true);
     }
@@ -302,7 +277,6 @@ const Orders = () => {
 
   const handleExportOrders = async () => {
     try {
-      // Create CSV content
       const csvHeaders = [
         "Order Number",
         "Customer",
@@ -332,7 +306,6 @@ const Orders = () => {
         ...csvRows.map((row) => row.map((field) => `"${field}"`).join(",")),
       ].join("\n");
 
-      // Download CSV
       const blob = new Blob([csvContent], { type: "text/csv" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -380,21 +353,73 @@ const Orders = () => {
   const formatAddress = (address) => {
     if (!address) return "N/A";
 
-    // Assuming address is now always an object
-    if (typeof address === "object") {
-      const parts = [
-        address.name,
-        address.street,
-        address.addressLine2,
-        `${address.city}, ${address.state} ${address.zip}`,
-        address.country,
-        address.phone && `Phone: ${address.phone}`,
-      ].filter(Boolean);
-
-      return parts.join(", ");
+    let addressObj = address;
+    if (typeof address === "string") {
+      try {
+        addressObj = JSON.parse(address);
+      } catch (error) {
+        console.error("Error parsing address:", error);
+        return address;
+      }
     }
 
-    return "N/A";
+    if (typeof addressObj !== "object" || !addressObj) return "N/A";
+
+    const parts = [
+      addressObj.name,
+      addressObj.street,
+      `${addressObj.city}, ${addressObj.state} ${addressObj.zip}`,
+      addressObj.country,
+      addressObj.phone && `Phone: ${addressObj.phone}`,
+    ].filter(Boolean);
+
+    return parts.join(", ");
+  };
+
+  // Fixed formatVariant function
+  const formatVariant = (variant) => {
+    if (!variant) {
+      return "N/A";
+    }
+
+    let variantObj = variant;
+    
+    // Handle string JSON
+    if (typeof variant === "string") {
+      try {
+        // Handle double-encoded JSON (string within string)
+        if (variant.startsWith('"') && variant.endsWith('"')) {
+          variantObj = JSON.parse(JSON.parse(variant));
+        } else {
+          variantObj = JSON.parse(variant);
+        }
+      } catch (error) {
+        console.error("Error parsing variant:", error, "Raw variant:", variant);
+        return variant; // Return original string if parsing fails
+      }
+    }
+
+    // Handle null or undefined
+    if (!variantObj || typeof variantObj !== "object") {
+      return "N/A";
+    }
+
+    // Format the variant object
+    const formatted = [];
+    
+    if (variantObj.color) {
+      formatted.push(`Color: ${variantObj.color}`);
+    }
+    
+    if (variantObj.size) {
+      formatted.push(`Size: ${variantObj.size}`);
+    }
+    
+    if (variantObj.type) {
+      formatted.push(`Type: ${variantObj.type}`);
+    }
+
+    return formatted.length > 0 ? formatted.join(", ") : "N/A";
   };
 
   if (loading && orders.length === 0) {
@@ -410,7 +435,6 @@ const Orders = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Order Management</h1>
@@ -435,7 +459,6 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
           <div className="flex items-center justify-between">
@@ -456,7 +479,7 @@ const Orders = () => {
               <p className="text-2xl font-bold text-gray-900">{formatCurrency(orderStats.totalRevenue)}</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
-              <DollarSign size={24} className="text-green-600" />
+              <IndianRupee  size={24} className="text-green-600" />
             </div>
           </div>
         </div>
@@ -486,17 +509,15 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">Error: {error}</p>
-          <button onClick={handleRefresh} className="mt-2 text-red-600 hover:text-red-800 underline">
+          <button onClick={handleRefresh} className="mt-2 text-red-800 hover:text-red-900 underline">
             Try again
           </button>
         </div>
       )}
 
-      {/* Filters */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 p-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
@@ -535,7 +556,6 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Orders Table */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -639,7 +659,6 @@ const Orders = () => {
           </table>
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <p className="text-sm text-gray-600">
@@ -683,11 +702,9 @@ const Orders = () => {
         )}
       </div>
 
-      {/* Order Details Modal */}
       <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Order Details" size="xl">
         {selectedOrder && (
           <div className="space-y-6">
-            {/* Order Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-gray-50 rounded-lg">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{selectedOrder.orderNumber}</h3>
@@ -706,7 +723,6 @@ const Orders = () => {
               </div>
             </div>
 
-            {/* Customer Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Customer Information</h4>
@@ -736,7 +752,6 @@ const Orders = () => {
               </div>
             </div>
 
-            {/* Order Items */}
             <div>
               <h4 className="font-semibold text-gray-900 mb-3">Order Items</h4>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -744,6 +759,7 @@ const Orders = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Product</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Variant</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Quantity</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Price</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Total</th>
@@ -753,30 +769,12 @@ const Orders = () => {
                     {(selectedOrder.items || selectedOrder.products || []).map((item, index) => (
                       <tr key={index}>
                         <td className="py-3 px-4">
-                          <div>
-                            <p className="font-medium">{item.productName || item.name}</p>
-                            {item.variant && (
-                              <p className="text-sm text-gray-500">
-                                {typeof item.variant === "string"
-                                  ? (() => {
-                                      try {
-                                        return Object.entries(JSON.parse(item.variant) || {})
-                                          .filter(([key, value]) => value)
-                                          .map(([key, value]) => `${key}: ${value}`)
-                                          .join(", ");
-                                      } catch {
-                                        return item.variant;
-                                      }
-                                    })()
-                                  : Object.entries(item.variant || {})
-                                      .filter(([key, value]) => value)
-                                      .map(([key, value]) => `${key}: ${value}`)
-                                      .join(", ")}
-                              </p>
-                            )}
-                          </div>
+                          <p className="font-medium">{item.productName || item.name || "N/A"}</p>
                         </td>
-                        <td className="py-3 px-4">{item.quantity}</td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-gray-700">{formatVariant(item.variant)}</p>
+                        </td>
+                        <td className="py-3 px-4">{item.quantity || "N/A"}</td>
                         <td className="py-3 px-4">{formatCurrency(item.price)}</td>
                         <td className="py-3 px-4">{formatCurrency(item.quantity * item.price)}</td>
                       </tr>
@@ -786,7 +784,6 @@ const Orders = () => {
               </div>
             </div>
 
-            {/* Payment Information */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-gray-50 rounded-lg">
               <div>
                 <p>
@@ -829,7 +826,6 @@ const Orders = () => {
               </div>
             </div>
 
-            {/* Order Status History */}
             {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 && (
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Status History</h4>
@@ -850,7 +846,6 @@ const Orders = () => {
               </div>
             )}
 
-            {/* Special Instructions */}
             {selectedOrder.specialInstructions && (
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Special Instructions</h4>
@@ -858,7 +853,6 @@ const Orders = () => {
               </div>
             )}
 
-            {/* Order Timestamps */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">Order Timeline</h4>

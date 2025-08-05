@@ -67,10 +67,76 @@ const OrderDetail = () => {
     return daysSinceDelivery <= 30
   }
 
+  // Fixed formatAddress function
+  const formatAddress = (address) => {
+    if (!address) return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
+
+    let addressObj = address;
+    if (typeof address === "string") {
+      try {
+        addressObj = JSON.parse(address);
+      } catch (error) {
+        console.error("Error parsing address:", error);
+        return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
+      }
+    }
+
+    if (typeof addressObj !== "object" || !addressObj) {
+      return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
+    }
+
+    return {
+      name: addressObj.name || "N/A",
+      street: addressObj.street || "N/A", 
+      city: addressObj.city || "N/A",
+      state: addressObj.state || "N/A",
+      zip: addressObj.zip || "N/A",
+      country: addressObj.country || "N/A",
+      phone: addressObj.phone || "N/A"
+    };
+  };
+
+  // Fixed formatVariant function
+  const formatVariant = (variant) => {
+    if (!variant) {
+      return { color: null, size: null, carat: null };
+    }
+
+    let variantObj = variant;
+    
+    // Handle string JSON
+    if (typeof variant === "string") {
+      try {
+        // Handle double-encoded JSON (string within string)
+        if (variant.startsWith('"') && variant.endsWith('"')) {
+          variantObj = JSON.parse(JSON.parse(variant));
+        } else {
+          variantObj = JSON.parse(variant);
+        }
+      } catch (error) {
+        console.error("Error parsing variant:", error, "Raw variant:", variant);
+        return { color: null, size: null, carat: null };
+      }
+    }
+
+    // Handle null or undefined
+    if (!variantObj || typeof variantObj !== "object") {
+      return { color: null, size: null, carat: null };
+    }
+
+    return {
+      color: variantObj.color || null,
+      size: variantObj.size || null,
+      carat: variantObj.carat || variantObj.type || null
+    };
+  };
+
   const downloadPDF = () => {
     if (!order) return
 
     const doc = new jsPDF()
+    const addressObj = formatAddress(order.shippingAddress)
+    
     doc.setFont("helvetica", "bold")
     doc.setFontSize(20)
     doc.text("Order Details", 20, 20)
@@ -85,23 +151,23 @@ const OrderDetail = () => {
     }
 
     doc.text("Shipping Address:", 20, 70)
-    const address = order.shippingAddress
-    doc.text(`${address.name}`, 20, 80)
-    doc.text(`${address.street}`, 20, 90)
-    doc.text(`${address.city}, ${address.state} ${address.zip}`, 20, 100)
-    doc.text(`${address.country}`, 20, 110)
-    doc.text(`Phone: ${address.phone}`, 20, 120)
+    doc.text(`${addressObj.name}`, 20, 80)
+    doc.text(`${addressObj.street}`, 20, 90)
+    doc.text(`${addressObj.city}, ${addressObj.state} ${addressObj.zip}`, 20, 100)
+    doc.text(`${addressObj.country}`, 20, 110)
+    doc.text(`Phone: ${addressObj.phone}`, 20, 120)
 
     doc.text("Items:", 20, 130)
     let y = 140
     order.items.forEach((item) => {
       doc.text(`${item.productName} (x${item.quantity}) - ₹${(item.price * item.quantity).toFixed(2)}`, 20, y)
-      if (item.variant && (item.variant.color || item.variant.size || item.variant.carat)) {
+      const itemVariant = formatVariant(item.variant)
+      if (itemVariant.color || itemVariant.size || itemVariant.carat) {
         y += 10
         const variants = []
-        if (item.variant.color) variants.push(`Color: ${item.variant.color}`)
-        if (item.variant.size) variants.push(`Size: ${item.variant.size}`)
-        if (item.variant.carat) variants.push(`Carat: ${item.variant.carat}`)
+        if (itemVariant.color) variants.push(`Color: ${itemVariant.color}`)
+        if (itemVariant.size) variants.push(`Size: ${itemVariant.size}`)
+        if (itemVariant.carat) variants.push(`Carat: ${itemVariant.carat}`)
         doc.text(`  ${variants.join(", ")}`, 20, y)
       }
       y += 10
@@ -191,6 +257,8 @@ const OrderDetail = () => {
     )
   }
 
+  const addressObj = formatAddress(order.shippingAddress)
+
   return (
     <div className="order-detail-container">
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -234,14 +302,14 @@ const OrderDetail = () => {
 
           <div className="col-md-6 mb-4">
             <h5>Shipping Address</h5>
-            <p>{order.shippingAddress.name}</p>
-            <p>{order.shippingAddress.street}</p>
+            <p><strong>Name:</strong> {addressObj.name}</p>
+            <p><strong>Address:</strong> {addressObj.street}</p>
             <p>
-              {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
+              <strong>City:</strong> {addressObj.city}, {addressObj.state} {addressObj.zip}
             </p>
-            <p>{order.shippingAddress.country}</p>
+            <p><strong>Country:</strong> {addressObj.country}</p>
             <p>
-              <strong>Phone:</strong> {order.shippingAddress.phone}
+              <strong>Phone:</strong> {addressObj.phone}
             </p>
           </div>
         </div>
@@ -255,33 +323,36 @@ const OrderDetail = () => {
 
         <div className="mb-4">
           <h5>Items ({order.items.length})</h5>
-          {order.items.map((item) => (
-            <div key={item.id} className="d-flex mb-3 align-items-start border-bottom pb-3">
-              <img
-                src={item.productImage || "/placeholder.svg?height=80&width=80&text=Product"}
-                alt={item.productName}
-                className="item-image me-3"
-                onClick={() => openImageViewer(item.productImage)}
-                style={{ cursor: "pointer" }}
-              />
-              <div className="flex-grow-1">
-                <p className="mb-1">
-                  <strong>{item.productName}</strong> (x{item.quantity})
-                </p>
-                {item.variant && (item.variant.color || item.variant.size || item.variant.carat) && (
-                  <p className="mb-1 text-muted small">
-                    {item.variant.color && `Color: ${item.variant.color} `}
-                    {item.variant.size && `Size: ${item.variant.size} `}
-                    {item.variant.carat && `Carat: ${item.variant.carat}`}
+          {order.items.map((item) => {
+            const itemVariant = formatVariant(item.variant)
+            return (
+              <div key={item.id} className="d-flex mb-3 align-items-start border-bottom pb-3">
+                <img
+                  src={item.productImage || "/placeholder.svg?height=80&width=80&text=Product"}
+                  alt={item.productName}
+                  className="item-image me-3"
+                  onClick={() => openImageViewer(item.productImage)}
+                  style={{ cursor: "pointer" }}
+                />
+                <div className="flex-grow-1">
+                  <p className="mb-1">
+                    <strong>{item.productName}</strong> (x{item.quantity})
                   </p>
-                )}
-                <p className="mb-0">
-                  ₹{Number.parseFloat(item.price).toFixed(2)} each = ₹
-                  {(Number.parseFloat(item.price) * item.quantity).toFixed(2)}
-                </p>
+                  {(itemVariant.color || itemVariant.size || itemVariant.carat) && (
+                    <p className="mb-1 text-muted small">
+                      {itemVariant.color && `Color: ${itemVariant.color} `}
+                      {itemVariant.size && `Size: ${itemVariant.size} `}
+                      {itemVariant.carat && `Type: ${itemVariant.carat}`}
+                    </p>
+                  )}
+                  <p className="mb-0">
+                    ₹{Number.parseFloat(item.price).toFixed(2)} each = ₹
+                    {(Number.parseFloat(item.price) * item.quantity).toFixed(2)}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="mb-4">
