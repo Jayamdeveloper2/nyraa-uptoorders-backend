@@ -59,9 +59,23 @@ const Order = sequelize.define(
       type: DataTypes.ENUM("pending", "paid", "failed", "refunded"),
       defaultValue: "pending",
     },
+    // Fixed: Use JSON type for consistent address storage
     shippingAddress: {
       type: DataTypes.JSON,
       allowNull: false,
+      validate: {
+        isValidAddress(value) {
+          if (!value || typeof value !== 'object') {
+            throw new Error('Shipping address must be a valid object');
+          }
+          const required = ['name', 'street', 'city', 'state', 'zip', 'phone'];
+          for (const field of required) {
+            if (!value[field] || value[field].trim() === '') {
+              throw new Error(`Address field '${field}' is required`);
+            }
+          }
+        }
+      }
     },
     specialInstructions: {
       type: DataTypes.TEXT,

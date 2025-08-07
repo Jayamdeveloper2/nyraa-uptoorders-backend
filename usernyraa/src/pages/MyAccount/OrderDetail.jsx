@@ -67,68 +67,127 @@ const OrderDetail = () => {
     return daysSinceDelivery <= 30
   }
 
-  // Fixed formatAddress function
+  // Enhanced formatAddress function specifically for your double-encoded JSON issue
   const formatAddress = (address) => {
-    if (!address) return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
+    console.log('Raw address from order:', address, typeof address); // Debug log
 
-    let addressObj = address;
+    // Default address object
+    const defaultAddress = {
+      name: "N/A",
+      street: "N/A", 
+      city: "N/A",
+      state: "N/A",
+      zip: "N/A",
+      country: "N/A",
+      phone: "N/A"
+    };
+
+    if (!address) {
+      console.warn("No address provided");
+      return defaultAddress;
+    }
+
+    // If address is already a proper object, use it directly
+    if (typeof address === "object" && address !== null && !Array.isArray(address)) {
+      console.log('Address is already an object:', address);
+      return {
+        name: address.name || defaultAddress.name,
+        street: address.street || defaultAddress.street,
+        city: address.city || defaultAddress.city,
+        state: address.state || defaultAddress.state,
+        zip: address.zip || defaultAddress.zip,
+        country: address.country || defaultAddress.country,
+        phone: address.phone || defaultAddress.phone
+      };
+    }
+
+    // If address is a string, handle double-encoded JSON
     if (typeof address === "string") {
       try {
-        addressObj = JSON.parse(address);
-      } catch (error) {
-        console.error("Error parsing address:", error);
-        return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
-      }
-    }
-
-    if (typeof addressObj !== "object" || !addressObj) {
-      return { name: "N/A", street: "N/A", city: "N/A", state: "N/A", zip: "N/A", country: "N/A", phone: "N/A" };
-    }
-
-    return {
-      name: addressObj.name || "N/A",
-      street: addressObj.street || "N/A", 
-      city: addressObj.city || "N/A",
-      state: addressObj.state || "N/A",
-      zip: addressObj.zip || "N/A",
-      country: addressObj.country || "N/A",
-      phone: addressObj.phone || "N/A"
-    };
-  };
-
-  // Fixed formatVariant function
-  const formatVariant = (variant) => {
-    if (!variant) {
-      return { color: null, size: null, carat: null };
-    }
-
-    let variantObj = variant;
-    
-    // Handle string JSON
-    if (typeof variant === "string") {
-      try {
-        // Handle double-encoded JSON (string within string)
-        if (variant.startsWith('"') && variant.endsWith('"')) {
-          variantObj = JSON.parse(JSON.parse(variant));
-        } else {
-          variantObj = JSON.parse(variant);
+        console.log('Attempting to parse address string...');
+        
+        // First parse - this should give us another JSON string
+        let firstParse = JSON.parse(address);
+        console.log('First parse result:', firstParse, typeof firstParse);
+        
+        // If first parse gives us a string, parse again (double-encoded case)
+        if (typeof firstParse === "string") {
+          console.log('Double-encoded JSON detected, parsing again...');
+          let secondParse = JSON.parse(firstParse);
+          console.log('Second parse result:', secondParse);
+          
+          return {
+            name: secondParse.name || defaultAddress.name,
+            street: secondParse.street || defaultAddress.street,
+            city: secondParse.city || defaultAddress.city,
+            state: secondParse.state || defaultAddress.state,
+            zip: secondParse.zip || defaultAddress.zip,
+            country: secondParse.country || defaultAddress.country,
+            phone: secondParse.phone || defaultAddress.phone
+          };
+        } 
+        // If first parse gives us an object, use it directly
+        else if (typeof firstParse === "object" && firstParse !== null) {
+          console.log('Single-encoded JSON, using directly');
+          return {
+            name: firstParse.name || defaultAddress.name,
+            street: firstParse.street || defaultAddress.street,
+            city: firstParse.city || defaultAddress.city,
+            state: firstParse.state || defaultAddress.state,
+            zip: firstParse.zip || defaultAddress.zip,
+            country: firstParse.country || defaultAddress.country,
+            phone: firstParse.phone || defaultAddress.phone
+          };
         }
       } catch (error) {
-        console.error("Error parsing variant:", error, "Raw variant:", variant);
-        return { color: null, size: null, carat: null };
+        console.error("Error parsing address string:", error, "Raw address:", address);
+        return defaultAddress;
       }
     }
 
-    // Handle null or undefined
-    if (!variantObj || typeof variantObj !== "object") {
-      return { color: null, size: null, carat: null };
+    console.warn("Address is not in expected format:", typeof address, address);
+    return defaultAddress;
+  };
+
+  // Improved formatVariant function
+  const formatVariant = (variant) => {
+    const defaultVariant = { color: null, size: null, carat: null };
+
+    if (!variant) {
+      return defaultVariant;
     }
 
-    return {
-      color: variantObj.color || null,
-      size: variantObj.size || null,
-      carat: variantObj.carat || variantObj.type || null
-    };
+    // If variant is already an object, use it directly
+    if (typeof variant === "object" && variant !== null) {
+      return {
+        color: variant.color || null,
+        size: variant.size || null,
+        carat: variant.carat || variant.type || null
+      };
+    }
+
+    // If variant is a string, try to parse it
+    if (typeof variant === "string") {
+      try {
+        // Handle double-encoded JSON
+        let parsed = variant;
+        if (variant.startsWith('"') && variant.endsWith('"')) {
+          parsed = JSON.parse(variant);
+        }
+        parsed = JSON.parse(parsed);
+        
+        return {
+          color: parsed.color || null,
+          size: parsed.size || null,
+          carat: parsed.carat || parsed.type || null
+        };
+      } catch (error) {
+        console.error("Error parsing variant:", error, "Raw variant:", variant);
+        return defaultVariant;
+      }
+    }
+
+    return defaultVariant;
   };
 
   const downloadPDF = () => {
@@ -258,6 +317,7 @@ const OrderDetail = () => {
   }
 
   const addressObj = formatAddress(order.shippingAddress)
+  console.log('Formatted address object:', addressObj); // Debug log
 
   return (
     <div className="order-detail-container">
@@ -302,15 +362,15 @@ const OrderDetail = () => {
 
           <div className="col-md-6 mb-4">
             <h5>Shipping Address</h5>
-            <p><strong>Name:</strong> {addressObj.name}</p>
-            <p><strong>Address:</strong> {addressObj.street}</p>
-            <p>
-              <strong>City:</strong> {addressObj.city}, {addressObj.state} {addressObj.zip}
-            </p>
-            <p><strong>Country:</strong> {addressObj.country}</p>
-            <p>
-              <strong>Phone:</strong> {addressObj.phone}
-            </p>
+            <div className="address-display">
+              <p><strong>Name:</strong> {addressObj.name}</p>
+              <p><strong>Address:</strong> {addressObj.street}</p>
+              <p>
+                <strong>City:</strong> {addressObj.city}, {addressObj.state} {addressObj.zip}
+              </p>
+              <p><strong>Country:</strong> {addressObj.country}</p>
+              <p><strong>Phone:</strong> {addressObj.phone}</p>
+            </div>
           </div>
         </div>
 
@@ -356,38 +416,42 @@ const OrderDetail = () => {
         </div>
 
         <div className="mb-4">
-          <h5>Order Summary</h5>
-          <div className="row">
-            <div className="col-md-6 offset-md-6">
-              <div className="d-flex justify-content-between mb-2">
-                <p>Subtotal</p>
-                <p>₹{Number.parseFloat(order.subtotal).toFixed(2)}</p>
-              </div>
-              <div className="d-flex justify-content-between mb-2">
-                <p>Shipping</p>
-                <p>₹{Number.parseFloat(order.shipping).toFixed(2)}</p>
-              </div>
-              <div className="d-flex justify-content-between mb-2">
-                <p>Tax</p>
-                <p>₹{Number.parseFloat(order.tax).toFixed(2)}</p>
-              </div>
-              {Number.parseFloat(order.discount) > 0 && (
-                <div className="d-flex justify-content-between mb-2">
-                  <p>Discount</p>
-                  <p className="text-success">-₹{Number.parseFloat(order.discount).toFixed(2)}</p>
-                </div>
-              )}
-              <div className="d-flex justify-content-between border-top pt-2">
-                <h6>
-                  <strong>Total</strong>
-                </h6>
-                <h6>
-                  <strong>₹{Number.parseFloat(order.total).toFixed(2)}</strong>
-                </h6>
-              </div>
-            </div>
-          </div>
+  <div className="row">
+    <div className="col-md-6">
+      <h5>Order Summary</h5>
+    </div>
+    <div className="col-md-6">
+      <div className="order-summary-details">
+        <div className="d-flex justify-content-between mb-2">
+          <p>Subtotal</p>
+          <p>₹{Number.parseFloat(order.subtotal).toFixed(2)}</p>
         </div>
+        <div className="d-flex justify-content-between mb-2">
+          <p>Shipping</p>
+          <p>₹{Number.parseFloat(order.shipping).toFixed(2)}</p>
+        </div>
+        <div className="d-flex justify-content-between mb-2">
+          <p>Tax</p>
+          <p>₹{Number.parseFloat(order.tax).toFixed(2)}</p>
+        </div>
+        {Number.parseFloat(order.discount) > 0 && (
+          <div className="d-flex justify-content-between mb-2">
+            <p>Discount</p>
+            <p className="text-success">-₹{Number.parseFloat(order.discount).toFixed(2)}</p>
+          </div>
+        )}
+        <div className="d-flex justify-content-between border-top pt-2">
+          <h6 className="mb-0">
+            <strong>Total</strong>
+          </h6>
+          <h6 className="mb-0">
+            <strong>₹{Number.parseFloat(order.total).toFixed(2)}</strong>
+          </h6>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
         <div className="d-flex gap-2 flex-wrap">
           <DownloadPDFButton onClick={downloadPDF} />
@@ -458,6 +522,18 @@ const OrderDetail = () => {
           font-size: 0.9rem;
           color: #333;
           margin-bottom: 0.5rem;
+        }
+        .address-display {
+          background-color: #f8f9fa;
+          padding: 1rem;
+          border-radius: 8px;
+          border-left: 4px solid #007bff;
+        }
+        .address-display p {
+          margin-bottom: 0.5rem;
+        }
+        .address-display p:last-child {
+          margin-bottom: 0;
         }
         .item-image {
           width: 80px;

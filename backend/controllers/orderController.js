@@ -15,6 +15,49 @@ const generateOrderNumber = () => {
   return `NYR-${timestamp.slice(-6)}${random}`
 }
 
+// Helper function to normalize address format - FIXED for your case
+const normalizeAddress = (address) => {
+  if (!address) {
+    throw new Error('Shipping address is required');
+  }
+
+  let addressObj = address;
+  
+  // If it's a string, try to parse it
+  if (typeof address === 'string') {
+    try {
+      addressObj = JSON.parse(address);
+    } catch (error) {
+      throw new Error('Invalid address format');
+    }
+  }
+
+  // If it's an Address model instance (with id, createdAt, etc.), extract only shipping fields
+  if (addressObj && typeof addressObj === 'object') {
+    // Validate required fields
+    const required = ['name', 'street', 'city', 'state', 'zip', 'phone'];
+    for (const field of required) {
+      if (!addressObj[field] || addressObj[field].toString().trim() === '') {
+        throw new Error(`Address field '${field}' is required`);
+      }
+    }
+
+    // Return only the shipping-relevant fields (exclude id, userId, createdAt, updatedAt)
+    return {
+      name: addressObj.name.toString().trim(),
+      street: addressObj.street.toString().trim(),
+      city: addressObj.city.toString().trim(),
+      state: addressObj.state.toString().trim(),
+      zip: addressObj.zip.toString().trim(),
+      country: addressObj.country || 'India',
+      phone: addressObj.phone.toString().trim(),
+      type: addressObj.type || 'home'
+    };
+  }
+
+  throw new Error('Invalid address format');
+}
+
 // Create new order
 exports.createOrder = async (req, res) => {
   const transaction = await sequelize.transaction()
@@ -42,11 +85,17 @@ exports.createOrder = async (req, res) => {
       })
     }
 
-    if (!shippingAddress) {
+    // Normalize and validate shipping address
+    let normalizedAddress;
+    try {
+      normalizedAddress = normalizeAddress(shippingAddress);
+      console.log('Normalized address:', normalizedAddress); // Debug log
+    } catch (error) {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Shipping address is required",
-      })
+        message: error.message,
+      });
     }
 
     // Validate products exist and have sufficient stock
@@ -103,7 +152,7 @@ exports.createOrder = async (req, res) => {
     // Generate order number
     const orderNumber = generateOrderNumber()
 
-    // Create order
+    // Create order with normalized address - STORE AS JSON OBJECT, NOT STRING
     const order = await Order.create(
       {
         orderNumber,
@@ -116,13 +165,15 @@ exports.createOrder = async (req, res) => {
         total: Number.parseFloat(total) || 0,
         paymentMethod: paymentMethod || "creditCard",
         paymentStatus: "pending",
-        shippingAddress: typeof shippingAddress === "string" ? shippingAddress : JSON.stringify(shippingAddress),
+        shippingAddress: normalizedAddress, // This will be stored as JSON object
         specialInstructions,
         couponCode,
         orderDate: new Date(),
       },
       { transaction },
     )
+
+    console.log('Order created with address:', order.shippingAddress); // Debug log
 
     // Create order items and update product stock
     const orderItems = []
@@ -139,9 +190,9 @@ exports.createOrder = async (req, res) => {
           price: Number.parseFloat(item.price),
           originalPrice: Number.parseFloat(item.originalPrice) || Number.parseFloat(item.price),
           variant: JSON.stringify({
-            color: item.color,
-            size: item.size,
-            carat: item.carat,
+            color: item.color || null,
+            size: item.size || null,
+            carat: item.carat || null,
           }),
         },
         { transaction },
@@ -344,6 +395,8 @@ exports.getOrder = async (req, res) => {
         message: "Order not found",
       })
     }
+
+    console.log('Retrieved order address:', order.shippingAddress); // Debug log
 
     res.json({
       success: true,
